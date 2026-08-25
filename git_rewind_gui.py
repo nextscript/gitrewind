@@ -926,6 +926,19 @@ class LoginPanel(QWidget):
         outer.addStretch(1)
 
         self._check_worker: TokenCheckWorker | None = None
+        # QThread-Objekte bis zum echten Thread-Ende am Leben halten.
+        # Sonst kann PyQt mit „QThread: Destroyed while thread is still running“ abstürzen.
+        self._thread_refs: list[QThread] = []
+
+    def _track_thread(self, worker: QThread) -> None:
+        self._thread_refs.append(worker)
+
+        def cleanup() -> None:
+            if worker in self._thread_refs:
+                self._thread_refs.remove(worker)
+            worker.deleteLater()
+
+        worker.finished.connect(cleanup)
 
     def set_busy(self, busy: bool):
         self.btn_browser.setEnabled(not busy)
@@ -948,6 +961,7 @@ class LoginPanel(QWidget):
         self.set_busy(True)
         self.set_status("Token wird geprüft…")
         self._check_worker = TokenCheckWorker(token)
+        self._track_thread(self._check_worker)
         self._check_worker.done.connect(self.check_finished)
         self._check_worker.start()
 
@@ -1291,6 +1305,8 @@ class MainWindow(QWidget):
         self._repo_push_allowed = False
         self._repo_permission_error = ""
         self._force_close = False
+        # Laufende QThreads zusätzlich referenzieren, bis finished() ausgelöst wurde.
+        self._thread_refs: list[QThread] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 18, 18, 18)
@@ -1393,6 +1409,16 @@ class MainWindow(QWidget):
         self._set_connected(False)
         self._startup_login()
 
+    def _track_thread(self, worker: QThread) -> None:
+        self._thread_refs.append(worker)
+
+        def cleanup() -> None:
+            if worker in self._thread_refs:
+                self._thread_refs.remove(worker)
+            worker.deleteLater()
+
+        worker.finished.connect(cleanup)
+
     def switch_section(self, name: str):
         self.btn_nav_rollback.setChecked(name == "rollback")
         self.btn_nav_logs.setChecked(name == "log")
@@ -1427,6 +1453,7 @@ class MainWindow(QWidget):
         self.login_panel.set_busy(True)
         self.login_panel.set_status("Gespeicherter Login wird geprüft…")
         self._auth_worker = TokenCheckWorker(secret["token"])
+        self._track_thread(self._auth_worker)
         self._auth_worker.done.connect(self._on_auth_check)
         self._auth_worker.start()
 
@@ -1483,6 +1510,7 @@ class MainWindow(QWidget):
         self.main_panel.set_status("busy")
         self.main_panel.append_log("Lade Repository-Liste…")
         self._api_worker = ApiWorker(list_repos, self._token)
+        self._track_thread(self._api_worker)
         self._api_worker.done.connect(self._on_repos)
         self._api_worker.start()
 
@@ -1505,6 +1533,7 @@ class MainWindow(QWidget):
         self.main_panel.set_status("busy")
         self.main_panel.append_log("Prüfe Push-Berechtigung…")
         self._api_worker = ApiWorker(check_repo_push_permission, self._token, self._login_name, name)
+        self._track_thread(self._api_worker)
         self._api_worker.done.connect(lambda result, err, repo=name: self._on_repo_permission_checked(repo, result, err))
         self._api_worker.start()
 
@@ -1525,6 +1554,7 @@ class MainWindow(QWidget):
         self.main_panel.set_status("busy")
         self.main_panel.append_log("Lade Commit-Historie…")
         self._api_worker = ApiWorker(fetch_all_commits, self._token, self._login_name, name)
+        self._track_thread(self._api_worker)
         self._api_worker.done.connect(self._on_commits)
         self._api_worker.start()
 
@@ -1567,6 +1597,7 @@ class MainWindow(QWidget):
 
     def _start_worker(self, worker: GitWorker):
         self._worker = worker
+        self._track_thread(worker)
         worker.log.connect(self.main_panel.append_log)
         worker.done.connect(self._on_git_done)
         worker.start()
