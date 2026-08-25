@@ -100,13 +100,22 @@ jobs:
                   return urllib.request.urlopen(r)
               except urllib.error.HTTPError as e:
                   raise SystemExit(f'{method} {url} -> {e.code}: {e.read().decode()[:500]}')
+          def delete_asset(url):
+              r = urllib.request.Request(url, headers=h, method='DELETE')
+              try:
+                  urllib.request.urlopen(r)
+              except urllib.error.HTTPError as e:
+                  if e.code == 404:
+                      print(f'asset already deleted: {url}')
+                      return
+                  raise SystemExit(f'DELETE {url} -> {e.code}: {e.read().decode()[:500]}')
           releases = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases?per_page=100'))
           rel = next((r for r in releases if r['tag_name'] == 'v1.0'), None)
           if rel:
               rid = rel['id']
               assets = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rid}/assets'))
               for a in assets:
-                  req('DELETE', f"https://api.github.com/repos/{repo}/releases/{rid}/assets/{a['id']}")
+                  delete_asset(f"https://api.github.com/repos/{repo}/releases/{rid}/assets/{a['id']}")
               print(f'release {rid} exists, old assets removed')
           else:
               payload = json.dumps({'tag_name': 'v1.0', 'name': 'GitRewind v1.0',
