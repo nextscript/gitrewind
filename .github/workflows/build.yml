@@ -20,7 +20,7 @@ jobs:
           copy "dist\GitRewind.exe" "out\"
           Compress-Archive -Path "out\*" -DestinationPath "GitRewind-Windows-x64.zip"
         shell: pwsh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GitRewind-Windows-x64
           path: GitRewind-Windows-x64.zip
@@ -38,7 +38,7 @@ jobs:
           cp dist/GitRewind GitRewind
           chmod +x GitRewind
           zip GitRewind-Linux-x64.zip GitRewind
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GitRewind-Linux-x64
           path: GitRewind-Linux-x64.zip
@@ -56,7 +56,7 @@ jobs:
           cp dist/GitRewind GitRewind
           chmod +x GitRewind
           zip GitRewind-macOS-arm64.zip GitRewind
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GitRewind-macOS-arm64
           path: GitRewind-macOS-arm64.zip
@@ -68,15 +68,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: GitRewind-Windows-x64
           path: out
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: GitRewind-Linux-x64
           path: out
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: GitRewind-macOS-arm64
           path: out
@@ -86,6 +86,16 @@ jobs:
         run: |
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
+          gh release delete v1.0 --yes || true
+          sleep 5
+          gh release create v1.0 \
+            assets/GitRewind-Windows-x64.zip \
+            assets/GitRewind-Linux-x64.zip \
+            assets/GitRewind-macOS-arm64.zip \
+            --title "GitRewind v1.0" \
+            --notes "GitRewind v1.0 - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64." \
+            --latest
+          exit 0
           python3 <<'PY'
           import json, os, pathlib, time, urllib.parse, urllib.request, urllib.error
           tok = os.environ['GITHUB_TOKEN']
