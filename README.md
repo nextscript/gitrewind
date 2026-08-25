@@ -1,3 +1,5 @@
+<p align="center"><img src="https://github.com/nextscript/gitrewind/raw/refs/heads/main/GitRewind_icon_animated.svg" width="350" height="350"></p>
+
 # GitRewind
 
 **GitRewind** ist ein grafisches Rollback-Tool für GitHub-Repositories. Es hilft dabei, einen fehlerhaften Commit rückgängig zu machen, indem der lokale `main`-Branch gezielt auf einen früheren, funktionierenden Commit zurückgesetzt und anschließend mit `--force-with-lease` zu GitHub übertragen wird.
@@ -5,8 +7,8 @@
 > **Wichtig:** GitRewind verändert die Commit-Historie des Ziel-Branches. Nutze das Tool nur, wenn du verstehst, dass ein Rollback auf `main` neuere Commits aus der sichtbaren Branch-Historie entfernen kann.
 
 ---
-
-## 1. Was ist GitRewind?
+<details>
+<summary><h2>1. Was ist GitRewind?</h2></summary>
 
 GitRewind ist eine Desktop-Anwendung mit grafischer Oberfläche für Git-Rollbacks.
 
@@ -37,8 +39,11 @@ git push --force-with-lease
 GitRewind nutzt bewusst `--force-with-lease` statt eines blinden `--force`, damit ein Push abgelehnt wird, wenn sich der Remote-Branch unerwartet verändert hat.
 
 ---
+</details>
+<details>
+    
+<summary><h2>2. Für was braucht man das Tool?</h2></summary>
 
-## 2. Für was braucht man das Tool?
 
 GitRewind ist für Situationen gedacht, in denen ein neuer Commit ein Repository beschädigt hat und du schnell auf einen vorherigen funktionierenden Zustand zurück möchtest.
 
@@ -53,8 +58,9 @@ Typische Beispiele:
 Das Tool ist **kein Ersatz für normale Reverts**. Wenn du die Historie nicht umschreiben möchtest oder mehrere Personen gleichzeitig an demselben Branch arbeiten, ist ein normaler `git revert` häufig die sicherere Lösung.
 
 ---
-
-## 3. Wie funktioniert GitRewind?
+</details>
+<details>
+<summary><h2>3. Wie funktioniert GitRewind?</h2></summary>
 
 ### GitHub-Verbindung
 
@@ -104,8 +110,9 @@ backup-before-rollback-<PROBLEM-COMMIT>
 Existiert dieser Branch bereits, wird das vorhandene Backup beibehalten.
 
 ---
-
-## 4. Was braucht man, um GitRewind nutzen zu können?
+</details>
+<details>
+<summary><h2>4. Was braucht man, um GitRewind nutzen zu können?</h2></summary>
 
 ### Allgemeine Voraussetzungen
 
@@ -152,8 +159,9 @@ git --version
 Wenn dieser Befehl funktioniert, kann GitRewind Git normalerweise ebenfalls finden.
 
 ---
-
-## 5. Was muss ich beim GitHub API Token beachten?
+</details>
+<details>
+<summary><h2>5. Was muss ich beim GitHub API Token beachten?</h2></summary>
 
 GitHub nennt diese Zugangsdaten **Personal Access Tokens (PAT)**.
 
@@ -251,8 +259,9 @@ Repository
 GitRewind deaktiviert solche Schutzmechanismen nicht automatisch.
 
 ---
-
-## 6. Auf welchen Betriebssystemen kann GitRewind laufen?
+</details>
+<details>
+<summary><h2>6. Auf welchen Betriebssystemen kann GitRewind laufen?</h2></summary>
 
 Der Python-/PyQt6-Code ist grundsätzlich für folgende Desktop-Systeme ausgelegt:
 
@@ -285,8 +294,9 @@ macOS benötigt ebenfalls:
 - `cryptography`
 
 ---
-
-## 7. Wie sicher ist es, meinen GitHub API Key dort einzugeben?
+</details>
+<details>
+<summary><h2>7. Wie sicher ist es, meinen GitHub API Key dort einzugeben?</h2></summary>
 
 ### Kurzfassung
 
@@ -423,8 +433,9 @@ Trotzdem gilt:
 > Ein GitHub Personal Access Token ist ein Zugangsschlüssel. Veröffentliche ihn niemals in einem Repository, Screenshot, Log oder Chat.
 
 ---
-
-## 8. Wie benutze ich GitRewind?
+</details>
+<details>
+<summary><h2>8. Wie benutze ich GitRewind?</h2></summary>
 
 ### Schritt 1 – Voraussetzungen installieren
 
@@ -719,3 +730,4 @@ Contents → Read and write
 Je weniger Rechte der Token besitzt, desto geringer ist der mögliche Schaden, falls er kompromittiert wird.
 
 ---
+</details>
