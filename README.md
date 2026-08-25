@@ -8,7 +8,7 @@
 
 ---
 <details>
-<summary><h2>1. Was ist GitRewind?</h2></summary>
+<summary><h3>1. Was ist GitRewind?</h3></summary>
 
 GitRewind ist eine Desktop-Anwendung mit grafischer Oberfläche für Git-Rollbacks.
 
@@ -42,7 +42,7 @@ GitRewind nutzt bewusst `--force-with-lease` statt eines blinden `--force`, dami
 </details>
 <details>
     
-<summary><h2>2. Für was braucht man das Tool?</h2></summary>
+<summary><h3>2. Für was braucht man das Tool?</h3></summary>
 
 
 GitRewind ist für Situationen gedacht, in denen ein neuer Commit ein Repository beschädigt hat und du schnell auf einen vorherigen funktionierenden Zustand zurück möchtest.
@@ -60,7 +60,7 @@ Das Tool ist **kein Ersatz für normale Reverts**. Wenn du die Historie nicht um
 ---
 </details>
 <details>
-<summary><h2>3. Wie funktioniert GitRewind?</h2></summary>
+<summary><h3>3. Wie funktioniert GitRewind?</h3></summary>
 
 ### GitHub-Verbindung
 
@@ -112,7 +112,7 @@ Existiert dieser Branch bereits, wird das vorhandene Backup beibehalten.
 ---
 </details>
 <details>
-<summary><h2>4. Was braucht man, um GitRewind nutzen zu können?</h2></summary>
+<summary><h3>4. Was braucht man, um GitRewind nutzen zu können?</h3></summary>
 
 ### Allgemeine Voraussetzungen
 
@@ -161,7 +161,7 @@ Wenn dieser Befehl funktioniert, kann GitRewind Git normalerweise ebenfalls find
 ---
 </details>
 <details>
-<summary><h2>5. Was muss ich beim GitHub API Token beachten?</h2></summary>
+<summary><h3>5. Was muss ich beim GitHub API Token beachten?</h3></summary>
 
 GitHub nennt diese Zugangsdaten **Personal Access Tokens (PAT)**.
 
@@ -261,7 +261,7 @@ GitRewind deaktiviert solche Schutzmechanismen nicht automatisch.
 ---
 </details>
 <details>
-<summary><h2>6. Auf welchen Betriebssystemen kann GitRewind laufen?</h2></summary>
+<summary><h3>6. Auf welchen Betriebssystemen kann GitRewind laufen?</h3></summary>
 
 Der Python-/PyQt6-Code ist grundsätzlich für folgende Desktop-Systeme ausgelegt:
 
@@ -296,7 +296,7 @@ macOS benötigt ebenfalls:
 ---
 </details>
 <details>
-<summary><h2>7. Wie sicher ist es, meinen GitHub API Key dort einzugeben?</h2></summary>
+<summary><h3>7. Wie sicher ist es, meinen GitHub API Key dort einzugeben?</h3></summary>
 
 ### Kurzfassung
 
@@ -435,7 +435,7 @@ Trotzdem gilt:
 ---
 </details>
 <details>
-<summary><h2>8. Wie benutze ich GitRewind?</h2></summary>
+<summary><h3>8. Wie benutze ich GitRewind?</h3></summary>
 
 ### Schritt 1 – Voraussetzungen installieren
 
