@@ -1,0 +1,11 @@
+build/
+dist/
+logs/
+screenshot/
+__pycache__/
+*.pyc
+GitRewind.exe
+GitRewind.spec
+protocoll.txt
+git_rewind_secret.enc
+git_rewind.key

@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller PyQt6 cryptography
+      - run: python -m PyInstaller --onefile --windowed --name GitRewind --icon icon.png --add-data "icon.png;." git_rewind_gui.py
+      - run: |
+          mkdir "out"
+          copy "dist\GitRewind.exe" "out\"
+          Compress-Archive -Path "out\*" -DestinationPath "GitRewind-Windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GitRewind-Windows-x64
+          path: GitRewind-Windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller PyQt6 cryptography
+      - run: python -m PyInstaller --onefile --windowed --name GitRewind --add-data "icon.png:." git_rewind_gui.py
+      - run: |
+          cp dist/GitRewind GitRewind
+          chmod +x GitRewind
+          zip GitRewind-Linux-x64.zip GitRewind
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GitRewind-Linux-x64
+          path: GitRewind-Linux-x64.zip
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller PyQt6 cryptography
+      - run: python -m PyInstaller --onefile --windowed --name GitRewind --add-data "icon.png:." git_rewind_gui.py
+      - run: |
+          cp dist/GitRewind GitRewind
+          chmod +x GitRewind
+          zip GitRewind-macOS-arm64.zip GitRewind
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GitRewind-macOS-arm64
+          path: GitRewind-macOS-arm64.zip
