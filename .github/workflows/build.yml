@@ -82,7 +82,8 @@ jobs:
           path: out
       - name: Upload to GitHub Release v1.0
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
