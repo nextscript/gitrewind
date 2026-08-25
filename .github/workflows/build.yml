@@ -87,7 +87,7 @@ jobs:
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
           python3 <<'PY'
-          import json, os, pathlib, time, urllib.request, urllib.error
+          import json, os, pathlib, time, urllib.parse, urllib.request, urllib.error
           tok = os.environ['GITHUB_TOKEN']
           repo = os.environ['GITHUB_REPOSITORY']
           h = {'Authorization': 'Bearer ' + tok, 'Accept': 'application/vnd.github+json'}
@@ -119,13 +119,9 @@ jobs:
           names = ['GitRewind-Windows-x64.zip', 'GitRewind-Linux-x64.zip', 'GitRewind-macOS-arm64.zip']
           for name in names:
               data = pathlib.Path('assets/' + name).read_bytes()
-              up_url = up_tpl.replace('{?name,label}', '?name=' + name + '&label=')
-              up = json.load(req('POST', up_url,
-                                  json.dumps({'name': name, 'content_type': 'application/zip'}).encode(),
-                                  {'Content-Type': 'application/json'}))
-              asset = up.get('asset', up)
-              target = asset.get('browser_download_url') or asset.get('upload_url')
-              req('PUT', target, data, {'Content-Type': 'application/zip', 'Accept': 'application/vnd.github+json'})
+              up_base = up_tpl.split('{', 1)[0]
+              up_url = up_base + '?' + urllib.parse.urlencode({'name': name})
+              req('POST', up_url, data, {'Content-Type': 'application/zip'})
               print('uploaded', name, len(data))
           time.sleep(3)
           ok = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rel["id"]}/assets'))
