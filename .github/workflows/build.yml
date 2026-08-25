@@ -87,7 +87,7 @@ jobs:
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
           python3 <<'PY'
-          import json, os, pathlib, urllib.request, urllib.error
+          import json, os, pathlib, time, urllib.request, urllib.error
           tok = os.environ['GITHUB_TOKEN']
           repo = os.environ['GITHUB_REPOSITORY']
           h = {'Authorization': 'Bearer ' + tok, 'Accept': 'application/vnd.github+json'}
@@ -114,16 +114,23 @@ jobs:
                                      'draft': False, 'prerelease': False}).encode()
               rel = json.load(req('POST', f'https://api.github.com/repos/{repo}/releases', payload,
                                    {'Content-Type': 'application/json'}))
-              rid = rel['id']
-              print('release created:', rid)
-          base = f'https://api.github.com/repos/{repo}/releases/{rid}'
-          for name in ['GitRewind-Windows-x64.zip', 'GitRewind-Linux-x64.zip', 'GitRewind-macOS-arm64.zip']:
+              print('release created:', rel['id'])
+          up_tpl = rel['upload_url']  # https://uploads.github.com/.../assets{?name,label}
+          names = ['GitRewind-Windows-x64.zip', 'GitRewind-Linux-x64.zip', 'GitRewind-macOS-arm64.zip']
+          for name in names:
               data = pathlib.Path('assets/' + name).read_bytes()
-              up = json.load(req('POST', f'{base}/assets?name={name}',
+              up_url = up_tpl.replace('{?name,label}', '?name=' + name + '&label=')
+              up = json.load(req('POST', up_url,
                                   json.dumps({'name': name, 'content_type': 'application/zip'}).encode(),
                                   {'Content-Type': 'application/json'}))
-              up_url = up['asset']['browser_download_url']
-              req('PUT', up_url, data, {'Content-Type': 'application/zip', 'Accept': 'application/vnd.github+json'})
+              asset = up.get('asset', up)
+              target = asset.get('browser_download_url') or asset.get('upload_url')
+              req('PUT', target, data, {'Content-Type': 'application/zip', 'Accept': 'application/vnd.github+json'})
               print('uploaded', name, len(data))
-          print('done, release id', rid)
+          time.sleep(3)
+          ok = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rel["id"]}/assets'))
+          for a in ok:
+              print(a['name'], a['state'], a['size'])
+          assert all(a['state'] == 'uploaded' for a in ok), 'asset still not uploaded'
+          print('DONE')
           PY
