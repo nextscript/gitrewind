@@ -14,11 +14,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pyinstaller PyQt6 cryptography
-      - run: python -m PyInstaller --onefile --windowed --name GitRewind --icon icon.png --add-data "icon.png;." git_rewind_gui.py
+      - run: python -m PyInstaller --onefile --windowed --name GitRewind --icon icon.ico --add-data "icon.png;." git_rewind_gui.py
       - run: |
           mkdir "out"
           copy "dist\GitRewind.exe" "out\"
           Compress-Archive -Path "out\*" -DestinationPath "GitRewind-Windows-x64.zip"
+        shell: pwsh
       - uses: actions/upload-artifact@v4
         with:
           name: GitRewind-Windows-x64
