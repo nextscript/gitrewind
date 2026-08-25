@@ -719,13 +719,3 @@ Contents → Read and write
 Je weniger Rechte der Token besitzt, desto geringer ist der mögliche Schaden, falls er kompromittiert wird.
 
 ---
-
-## Lizenz
-
-Füge hier die Lizenz deines Projekts ein, z. B.:
-
-```text
-MIT License
-```
-
-oder entferne diesen Abschnitt, solange noch keine Lizenz festgelegt wurde.
