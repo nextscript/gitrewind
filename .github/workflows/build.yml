@@ -109,11 +109,31 @@ jobs:
                       print(f'asset already deleted: {url}')
                       return
                   raise SystemExit(f'DELETE {url} -> {e.code}: {e.read().decode()[:500]}')
+          def list_assets(release_id):
+              return json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{release_id}/assets?per_page=100'))
+          def upload_asset(upload_template, release_id, name, data):
+              up_base = upload_template.split('{', 1)[0]
+              up_url = up_base + '?' + urllib.parse.urlencode({'name': name})
+              for attempt in range(3):
+                  r = urllib.request.Request(up_url, data=data, headers={**h, 'Content-Type': 'application/zip'}, method='POST')
+                  try:
+                      urllib.request.urlopen(r)
+                      print('uploaded', name, len(data))
+                      return
+                  except urllib.error.HTTPError as e:
+                      body = e.read().decode()
+                      if e.code == 422 and 'already_exists' in body and attempt < 2:
+                          for a in list_assets(release_id):
+                              if a['name'] == name:
+                                  delete_asset(f"https://api.github.com/repos/{repo}/releases/{release_id}/assets/{a['id']}")
+                          time.sleep(2)
+                          continue
+                      raise SystemExit(f'POST {up_url} -> {e.code}: {body[:500]}')
           releases = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases?per_page=100'))
           rel = next((r for r in releases if r['tag_name'] == 'v1.0'), None)
           if rel:
               rid = rel['id']
-              assets = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rid}/assets'))
+              assets = list_assets(rid)
               for a in assets:
                   delete_asset(f"https://api.github.com/repos/{repo}/releases/{rid}/assets/{a['id']}")
               print(f'release {rid} exists, old assets removed')
@@ -128,10 +148,7 @@ jobs:
           names = ['GitRewind-Windows-x64.zip', 'GitRewind-Linux-x64.zip', 'GitRewind-macOS-arm64.zip']
           for name in names:
               data = pathlib.Path('assets/' + name).read_bytes()
-              up_base = up_tpl.split('{', 1)[0]
-              up_url = up_base + '?' + urllib.parse.urlencode({'name': name})
-              req('POST', up_url, data, {'Content-Type': 'application/zip'})
-              print('uploaded', name, len(data))
+              upload_asset(up_tpl, rel['id'], name, data)
           time.sleep(3)
           ok = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rel["id"]}/assets'))
           for a in ok:
