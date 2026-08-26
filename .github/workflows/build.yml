@@ -80,21 +80,21 @@ jobs:
         with:
           name: GitRewind-macOS-arm64
           path: out
-      - name: Upload to GitHub Release v1.0
+      - name: Upload to GitHub Release v1.1
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
-          gh release delete v1.0 --yes || true
+          gh release delete v1.1 --yes || true
           sleep 5
-          gh release create v1.0 \
+          gh release create v1.1 \
             assets/GitRewind-Windows-x64.zip \
             assets/GitRewind-Linux-x64.zip \
             assets/GitRewind-macOS-arm64.zip \
-            --title "GitRewind v1.0" \
-            --notes "GitRewind v1.0 - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64." \
+            --title "GitRewind v1.1" \
+            --notes "GitRewind v1.1 - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64." \
             --latest
           exit 0
           python3 <<'PY'
@@ -141,7 +141,7 @@ jobs:
                           continue
                       raise SystemExit(f'POST {up_url} -> {e.code}: {body[:500]}')
           releases = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases?per_page=100'))
-          rel = next((r for r in releases if r['tag_name'] == 'v1.0'), None)
+          rel = next((r for r in releases if r['tag_name'] == 'v1.1'), None)
           if rel:
               rid = rel['id']
               assets = list_assets(rid)
@@ -149,8 +149,8 @@ jobs:
                   delete_asset(f"https://api.github.com/repos/{repo}/releases/{rid}/assets/{a['id']}")
               print(f'release {rid} exists, old assets removed')
           else:
-              payload = json.dumps({'tag_name': 'v1.0', 'name': 'GitRewind v1.0',
-                                     'body': 'GitRewind v1.0 — Multi-OS-Builds: Windows x64, Linux x64, macOS arm64.',
+              payload = json.dumps({'tag_name': 'v1.1', 'name': 'GitRewind v1.1',
+                                     'body': 'GitRewind v1.1 — Multi-OS-Builds: Windows x64, Linux x64, macOS arm64.',
                                      'draft': False, 'prerelease': False}).encode()
               rel = json.load(req('POST', f'https://api.github.com/repos/{repo}/releases', payload,
                                    {'Content-Type': 'application/json'}))

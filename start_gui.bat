@@ -3,16 +3,16 @@ setlocal
 cd /d "%~dp0"
 set "APP=%~dp0git_rewind_gui.py"
 
-REM pythonw = Python OHNE Konsolen-Fenster
+REM pythonw = Python WITHOUT a console window
 where pythonw >nul 2>&1
 if %errorlevel%==0 goto :launch_pythonw
 
-REM Fallback: nur python vorhanden -> minimiertes Fenster
+REM Fallback: only python available -> minimized window
 where python >nul 2>&1
 if %errorlevel%==0 goto :launch_min
 
-echo Python wurde nicht gefunden.
-echo Bitte Python installieren (https://www.python.org) und diese BAT erneut starten.
+echo Python was not found.
+echo Please install Python (https://www.python.org) and run this BAT again.
 pause
 exit /b 1
 
@@ -21,6 +21,6 @@ start "" pythonw "%APP%"
 exit /b 0
 
 :launch_min
-echo Hinweis: pythonw wurde nicht gefunden - starte mit minimiertem Fenster.
+echo Note: pythonw was not found - starting in a minimized window.
 start /min python "%APP%"
 exit /b 0

@@ -2,174 +2,174 @@
 
 # GitRewind
 
-**GitRewind** ist ein grafisches Rollback-Tool für GitHub-Repositories. Es hilft dabei, einen fehlerhaften Commit rückgängig zu machen, indem der lokale `main`-Branch gezielt auf einen früheren, funktionierenden Commit zurückgesetzt und anschließend mit `--force-with-lease` zu GitHub übertragen wird.
+**GitRewind** is a graphical rollback tool for GitHub repositories. It helps you undo a broken commit by deliberately resetting the local `main` branch to an earlier, working commit and then pushing it to GitHub with `--force-with-lease`.
 
-> **Wichtig:** GitRewind verändert die Commit-Historie des Ziel-Branches. Nutze das Tool nur, wenn du verstehst, dass ein Rollback auf `main` neuere Commits aus der sichtbaren Branch-Historie entfernen kann.
+> **Important:** GitRewind rewrites the commit history of the target branch. Only use this tool if you understand that a rollback on `main` can remove newer commits from the visible branch history.
 
 ---
 <details>
-<summary><h3>1. Was ist GitRewind?</h3></summary>
+<summary><h3>1. What is GitRewind?</h3></summary>
 
-GitRewind ist eine Desktop-Anwendung mit grafischer Oberfläche für Git-Rollbacks.
+GitRewind is a desktop application with a graphical interface for Git rollbacks.
 
-Das Tool verbindet sich über einen GitHub Personal Access Token mit deinem GitHub-Konto, lädt deine Repositories sowie deren Commit-Historie und erlaubt dir anschließend, einen früheren Commit als neuen Stand von `main` festzulegen.
+The tool connects to your GitHub account with a GitHub Personal Access Token, loads your repositories and their commit history, and lets you set an earlier commit as the new state of `main`.
 
-Der grundlegende Ablauf ist:
+The basic flow is:
 
 ```text
-GitHub anmelden
+log in to GitHub
     ↓
-Repository auswählen
+select a repository
     ↓
-Commit-Historie laden
+load the commit history
     ↓
-guten Ziel-Commit auswählen
+select a good target commit
     ↓
-kaputten/problematischen Commit auswählen
+select the broken/problematic commit
     ↓
-lokales Backup anlegen
+create a local backup
     ↓
-main lokal auf Ziel-Commit setzen
+set main locally to the target commit
     ↓
-Remote-Stand aktualisieren
+refresh the remote state
     ↓
 git push --force-with-lease
 ```
 
-GitRewind nutzt bewusst `--force-with-lease` statt eines blinden `--force`, damit ein Push abgelehnt wird, wenn sich der Remote-Branch unerwartet verändert hat.
+GitRewind deliberately uses `--force-with-lease` instead of a blind `--force`, so the push is rejected if the remote branch has changed unexpectedly.
 
 ---
 </details>
 <details>
     
-<summary><h3>2. Für was braucht man das Tool?</h3></summary>
+<summary><h3>2. What is the tool for?</h3></summary>
 
 
-GitRewind ist für Situationen gedacht, in denen ein neuer Commit ein Repository beschädigt hat und du schnell auf einen vorherigen funktionierenden Zustand zurück möchtest.
+GitRewind is meant for situations in which a new commit has broken a repository and you want to get back quickly to a previously working state.
 
-Typische Beispiele:
+Typical examples:
 
-- Ein neuer Commit verursacht Fehler oder Abstürze.
-- Eine größere Änderung soll vollständig zurückgenommen werden.
-- `main` soll wieder exakt auf einen bekannten funktionierenden Commit zeigen.
-- Du möchtest den Rollback ohne manuelle Git-Kommandos durchführen.
-- Du möchtest vor dem Rollback automatisch einen lokalen Backup-Branch behalten.
+- A new commit causes errors or crashes.
+- A large change should be completely rolled back.
+- `main` should point exactly at a known working commit again.
+- You want to perform the rollback without manual Git commands.
+- You want to automatically keep a local backup branch before the rollback.
 
-Das Tool ist **kein Ersatz für normale Reverts**. Wenn du die Historie nicht umschreiben möchtest oder mehrere Personen gleichzeitig an demselben Branch arbeiten, ist ein normaler `git revert` häufig die sicherere Lösung.
+The tool is **not a replacement for normal reverts**. If you do not want to rewrite the history, or if several people are working on the same branch at the same time, a plain `git revert` is often the safer option.
 
 ---
 </details>
 <details>
-<summary><h3>3. Wie funktioniert GitRewind?</h3></summary>
+<summary><h3>3. How does GitRewind work?</h3></summary>
 
-### GitHub-Verbindung
+### GitHub connection
 
-Nach dem Start meldest du dich mit einem GitHub Personal Access Token an.
+After startup, you sign in with a GitHub Personal Access Token.
 
-GitRewind verwendet die GitHub API unter anderem zum:
+GitRewind uses the GitHub API, among other things, to:
 
-- Prüfen des Tokens
-- Laden der Repository-Liste
-- Laden der Commit-Historie
-- Prüfen der Repository-Berechtigungen
+- verify the token
+- load the repository list
+- load the commit history
+- check the repository permissions
 
-Die Commit-Historie wird über die GitHub API geladen. Die aktuelle Anwendung lädt dabei bis zu **500 Commits**.
+The commit history is loaded via the GitHub API. The current application loads up to **500 commits**.
 
-### Lokaler Rollback
+### Local rollback
 
-Nach Auswahl des Ziel-Commits führt GitRewind sinngemäß folgende Schritte aus:
+After you select the target commit, GitRewind performs the following steps (in effect):
 
 ```bash
 git fetch
 git branch backup-before-rollback-<COMMIT>
-git checkout -B main <ZIEL-COMMIT>
+git checkout -B main <COMMIT>
 ```
 
-Existiert der lokale Repository-Ordner noch nicht, wird das Repository vorher geklont.
+If the local repository folder does not exist yet, the repository is cloned beforehand.
 
-### Push zu GitHub
+### Push to GitHub
 
-Vor dem eigentlichen Push wird der aktuelle Remote-Stand erneut geladen.
+git checkout -B main <TARGET-COMMIT>
 
-Danach wird `main` mit einem geschützten Force-Push aktualisiert:
+Then `main` is updated with a protected force push:
 
 ```bash
 git push --force-with-lease ...
 ```
 
-`--force-with-lease` ist sicherer als ein einfacher `--force`, weil Git dabei prüft, ob der erwartete Remote-Stand noch aktuell ist.
+`--force-with-lease` is safer than a plain `--force`, because Git checks whether the expected remote state is still current.
 
 ### Backup
 
-Vor dem Rollback wird lokal ein Backup-Branch erzeugt:
+Before the rollback, a local backup branch is created:
 
 ```text
 backup-before-rollback-<PROBLEM-COMMIT>
 ```
 
-Existiert dieser Branch bereits, wird das vorhandene Backup beibehalten.
+If this branch already exists, the existing backup is kept.
 
 ---
 </details>
 <details>
-<summary><h3>4. Was braucht man, um GitRewind nutzen zu können?</h3></summary>
+<summary><h3>4. What do I need to use GitRewind?</h3></summary>
 
-### Allgemeine Voraussetzungen
+### General requirements
 
-Du brauchst:
+You need:
 
-- einen GitHub-Account
-- Zugriff auf mindestens ein GitHub-Repository
-- einen GitHub Personal Access Token
-- Git auf dem Rechner
-- eine Internetverbindung zu GitHub
-- Python 3.10 oder neuer
+- a GitHub account
+- access to at least one GitHub repository
+- a GitHub Personal Access Token
+- Git on the machine
+- an internet connection to GitHub
+- Python 3.10 or newer
 - PyQt6
 
-Python 3.10 oder neuer ist erforderlich, weil der Code moderne Python-Typnotation wie `Path | None` verwendet.
+Python 3.10 or newer is required because the code uses modern Python type notation such as `Path | None`.
 
-### Python-Abhängigkeiten
+### Python dependencies
 
-Installiere mindestens:
+Install at least:
 
 ```bash
 pip install PyQt6
 ```
 
-Unter macOS und Linux wird zusätzlich das Python-Paket `keyring` für den sicheren System-Schlüsselspeicher verwendet:
+On macOS and Linux, the Python package `keyring` is additionally used for the system's secure key storage:
 
 ```bash
 pip install keyring
 ```
 
-Unter Linux wird für Secret Service typischerweise zusätzlich benötigt:
+On Linux, the following is typically additionally required for the Secret Service:
 
 ```bash
 pip install secretstorage
 ```
 
-GitRewind verwendet dabei **keinen selbst erzeugten Verschlüsselungsschlüssel neben der Anwendung**.
+GitRewind does **not use a self-generated encryption key stored next to the application** for this.
 
-Git muss separat installiert und über die Kommandozeile erreichbar sein:
+Git must be installed separately and be reachable from the command line:
 
 ```bash
 git --version
 ```
 
-Wenn dieser Befehl funktioniert, kann GitRewind Git normalerweise ebenfalls finden.
+If this command works, GitRewind can usually find Git as well.
 
 ---
 </details>
 <details>
-<summary><h3>5. Was muss ich beim GitHub API Token beachten?</h3></summary>
+<summary><h3>5. What should I consider regarding the GitHub API token?</h3></summary>
 
-GitHub nennt diese Zugangsdaten **Personal Access Tokens (PAT)**.
+GitHub calls these credentials **Personal Access Tokens (PAT)**.
 
-Für GitRewind ist ein **Fine-Grained Personal Access Token** empfehlenswert, weil du damit den Zugriff auf bestimmte Repositories und Berechtigungen begrenzen kannst.
+A **Fine-Grained Personal Access Token** is recommended for GitRewind, because it lets you limit access to specific repositories and permissions.
 
-### Empfohlene Fine-Grained-Einstellungen
+### Recommended fine-grained settings
 
-Unter:
+Under:
 
 ```text
 GitHub
@@ -179,48 +179,48 @@ GitHub
 → Fine-grained tokens
 ```
 
-solltest du Folgendes einstellen:
+you should configure the following:
 
 ### Repository access
 
-Am sichersten:
+Safest:
 
 ```text
 Only select repositories
 ```
 
-und danach nur die Repositories auswählen, die GitRewind tatsächlich verwalten darf.
+and then select only the repositories that GitRewind is actually allowed to manage.
 
 ### Repository permissions
 
-Für den normalen Betrieb:
+For normal operation:
 
-| Berechtigung | Einstellung |
+| Permission | Setting |
 |---|---|
 | Metadata | Read |
 | Contents | Read and write |
 
-`Metadata: Read` wird für Repository-Metadaten und Repository-Abfragen benötigt. `Contents: Read and write` ist die entscheidende Berechtigung für Schreiboperationen auf Repository-Inhalte bzw. Git-Referenzen. [GitHub, Permissions required for fine-grained personal access tokens, https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens]
+`Metadata: Read` is required for repository metadata and repository queries. `Contents: Read and write` is the key permission for write operations on repository contents and Git references. [GitHub, Permissions required for fine-grained personal access tokens, https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens]
 
-### Workflow-Dateien
+### Workflow files
 
-Wenn der zurückgesetzte Stand Änderungen unter:
+If the state you are resetting to changes files under:
 
 ```text
 .github/workflows/
 ```
 
-betrifft, kann zusätzlich folgende Berechtigung erforderlich sein:
+the following additional permission may be required:
 
 ```text
 Workflows: Read and write
 ```
 
-GitHub behandelt Workflow-bezogene Schreiboperationen gesondert. [GitHub, Permissions required for fine-grained personal access tokens, https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens]
+GitHub treats workflow-related write operations separately. [GitHub, Permissions required for fine-grained personal access tokens, https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens]
 
-### Nicht benötigte Rechte
+### Unneeded permissions
 
-GitRewind braucht für seinen normalen Zweck keine pauschalen Schreibrechte auf:
+GitRewind does not need blanket write permissions for its normal purpose:
 
 - Actions
 - Issues
@@ -233,13 +233,13 @@ GitRewind braucht für seinen normalen Zweck keine pauschalen Schreibrechte auf:
 - Pages
 - Repository Hooks
 
-Vergib grundsätzlich nur die Berechtigungen, die wirklich benötigt werden.
+Only grant the permissions that are really needed.
 
-### Branch Protection und Rulesets
+### Branch protection and rulesets
 
-Auch mit einem korrekt berechtigten Token kann GitHub den Rollback blockieren, wenn `main` durch eine Branch Protection oder ein Ruleset gegen Force-Pushes geschützt ist.
+Even with a correctly scoped token, GitHub can block the rollback if `main` is protected against force pushes by branch protection or a ruleset.
 
-In diesem Fall musst du die Repository-Regeln prüfen:
+In that case you must check the repository rules:
 
 ```text
 Repository
@@ -248,7 +248,7 @@ Repository
 → Rulesets
 ```
 
-bzw.:
+or:
 
 ```text
 Repository
@@ -256,14 +256,14 @@ Repository
 → Branches
 ```
 
-GitRewind deaktiviert solche Schutzmechanismen nicht automatisch.
+GitRewind does not disable such protection mechanisms automatically.
 
 ---
 </details>
 <details>
-<summary><h3>6. Auf welchen Betriebssystemen kann GitRewind laufen?</h3></summary>
+<summary><h3>6. On which operating systems can GitRewind run?</h3></summary>
 
-Der Python-/PyQt6-Code ist grundsätzlich für folgende Desktop-Systeme ausgelegt:
+The Python/PyQt6 code is designed for the following desktop systems:
 
 - Windows
 - Linux
@@ -271,22 +271,22 @@ Der Python-/PyQt6-Code ist grundsätzlich für folgende Desktop-Systeme ausgeleg
 
 ### Windows
 
-Windows ist die derzeit am besten integrierte Plattform, insbesondere bei der Speicherung des GitHub-Tokens.
+Windows is currently the best integrated platform, especially for storing the GitHub token.
 
 ### Linux
 
-Linux funktioniert, wenn folgende Komponenten vorhanden sind:
+Linux works if the following components are available:
 
 - Python
 - PyQt6
 - Git
 - `cryptography`
 
-Je nach Desktop-Umgebung können zusätzliche Qt-Systempakete erforderlich sein.
+Depending on the desktop environment, additional Qt system packages may be required.
 
 ### macOS
 
-macOS benötigt ebenfalls:
+macOS also requires:
 
 - Python
 - PyQt6
@@ -296,83 +296,83 @@ macOS benötigt ebenfalls:
 ---
 </details>
 <details>
-<summary><h3>7. Wie sicher ist es, meinen GitHub API Key dort einzugeben?</h3></summary>
+<summary><h3>7. How safe is it to enter my GitHub API key there?</h3></summary>
 
-### Kurzfassung
+### Summary
 
-GitRewind speichert den GitHub Personal Access Token plattformspezifisch im sicheren Schlüsselspeicher des Betriebssystems:
+GitRewind stores the GitHub Personal Access Token in the secure key storage of the operating system, platform-specific:
 
-| Betriebssystem | Speicherung |
+| Operating system | Storage |
 |---|---|
 | Windows | Windows DPAPI |
-| macOS | Apple Keychain über `keyring` |
-| Linux | Secret Service / KWallet über `keyring` |
+| macOS | Apple Keychain via `keyring` |
+| Linux | Secret Service / KWallet via `keyring` |
 
-Der GitHub-Token wird auf macOS und Linux **nicht zusammen mit einem eigenen Verschlüsselungsschlüssel neben GitRewind gespeichert**.
+On macOS and Linux, the GitHub token is **not stored next to GitRewind together with a self-owned encryption key**.
 
 ---
 
 ### Windows – DPAPI
 
-Unter Windows verwendet GitRewind die Windows Data Protection API (**DPAPI**) über `CryptProtectData`.
+On Windows, GitRewind uses the Windows Data Protection API (**DPAPI**) via `CryptProtectData`.
 
-DPAPI schützt die gespeicherten Daten über den Windows-Benutzerkontext. Die verschlüsselten Daten können normalerweise nicht einfach auf einen anderen Benutzer oder Rechner kopiert und dort entschlüsselt werden.
+DPAPI protects the stored data through the Windows user context. The encrypted data usually cannot simply be copied to another user or machine and decrypted there.
 
 [Microsoft, CryptProtectData function, https://learn.microsoft.com/en-us/windows/win32/api/dpapi/nf-dpapi-cryptprotectdata]
 
-GitRewind speichert dabei nur die von DPAPI geschützten Daten lokal.
+GitRewind stores only the DPAPI-protected data locally.
 
 ---
 
 ### macOS – Apple Keychain
 
-Unter macOS wird der GitHub-Token über das Python-Paket `keyring` im **Apple Keychain** gespeichert.
+On macOS, the GitHub token is stored in the **Apple Keychain** via the Python package `keyring`.
 
-Der eigentliche Token liegt dadurch nicht als Klartext und auch nicht zusammen mit einem eigenen Entschlüsselungsschlüssel im GitRewind-Ordner.
+The actual token is therefore not stored in plaintext and not together with its own decryption key in the GitRewind folder.
 
-Apple Keychain ist der vom Betriebssystem vorgesehene geschützte Speicher für Passwörter, Tokens und andere Zugangsdaten.
+Apple Keychain is the protected storage intended by the operating system for passwords, tokens, and other credentials.
 
 [Apple, Keychain Services, https://developer.apple.com/documentation/security/keychain-services]
 
-Eine eventuell von GitRewind angelegte lokale Metadaten-Datei enthält **nicht den GitHub-Token selbst**, sondern nur Informationen, die benötigt werden, um den gespeicherten Eintrag wiederzufinden.
+A local metadata file that GitRewind may create contains **not the GitHub token itself**, but only the information needed to locate the stored entry.
 
 ---
 
 ### Linux – Secret Service / KWallet
 
-Unter Linux verwendet GitRewind ebenfalls `keyring`.
+On Linux, GitRewind also uses `keyring`.
 
-Je nach Desktop-Umgebung wird der Token dadurch beispielsweise gespeichert in:
+Depending on the desktop environment, the token is stored, for example, in:
 
 - GNOME Keyring / Secret Service
 - KDE KWallet
-- einem anderen kompatiblen sicheren Keyring-Backend
+- another compatible secure keyring backend
 
-Der eigentliche Token wird **nicht als normale Datei im GitRewind-Verzeichnis gespeichert**.
+The actual token is **not stored as a regular file in the GitRewind directory**.
 
-Für Secret Service kann zusätzlich benötigt werden:
+The following may additionally be required for the Secret Service:
 
 ```bash
 pip install secretstorage
 ```
 
-Auf einem typischen Linux-Desktop muss außerdem ein funktionierender Secret-Service bzw. Keyring verfügbar sein.
+On a typical Linux desktop, a working Secret Service or keyring must also be available.
 
-Wenn kein sicherer Keyring verfügbar ist, soll GitRewind den Token **nicht auf einen unsicheren Datei-Fallback zurückstufen**. Stattdessen wird die Speicherung abgelehnt und eine Fehlermeldung angezeigt.
+If no secure keyring is available, GitRewind does **not fall back to an insecure file fallback**. Instead, storage is refused and an error message is shown.
 
 ---
 
-### Keine `git_rewind.key` mehr für den normalen Betrieb
+### No more `git_rewind.key` for normal operation
 
-Die frühere Variante verwendete auf Linux/macOS einen lokalen Fernet-Schlüssel:
+The previous variant used a local Fernet key on Linux/macOS:
 
 ```text
 git_rewind.key
 ```
 
-Diese Lösung ist nicht mehr die vorgesehene Speicherung.
+This solution is no longer the intended storage method.
 
-In der aktuellen sicheren Architektur gilt:
+With the current secure architecture:
 
 ```text
 Windows → DPAPI
@@ -380,36 +380,36 @@ macOS   → Apple Keychain
 Linux   → Secret Service / KWallet
 ```
 
-Damit befindet sich auf macOS/Linux kein eigener Schlüssel neben der Anwendung, mit dem sich der Token direkt entschlüsseln ließe.
+This means that on macOS/Linux there is no self-owned key next to the application that could be used to decrypt the token directly.
 
 ---
 
-### Wie sicher ist das?
+### How secure is that?
 
-Für eine lokale Desktop-Anwendung ist diese Architektur sinnvoll und deutlich besser als:
+For a local desktop application, this architecture is sensible and clearly better than:
 
 ```text
-Token verschlüsseln
+encrypt the token
 +
-Entschlüsselungsschlüssel im selben App-Ordner speichern
+store the decryption key in the same app folder
 ```
 
-Der Schutz ist dennoch nicht absolut.
+The protection is nevertheless not absolute.
 
-Kein lokaler Schlüsselspeicher kann einen Token zuverlässig schützen, wenn:
+No local key storage can reliably protect a token when:
 
-- dein Benutzerkonto bereits vollständig kompromittiert wurde
-- Malware unter deinem Benutzerkonto läuft
-- ein Angreifer Administrator- bzw. Root-Zugriff auf das laufende System besitzt
-- ein Angreifer Zugriff auf deinen entsperrten Benutzer-Schlüsselspeicher erhält
+- your user account has already been fully compromised
+- malware is running under your user account
+- an attacker has administrator/root access to the running system
+- an attacker gains access to your unlocked user key storage
 
-Deshalb sollte der GitHub-Token zusätzlich immer nach dem **Least-Privilege-Prinzip** erstellt werden.
+Therefore, the GitHub token should additionally always be created according to the **principle of least privilege**.
 
-Empfohlen:
+Recommended:
 
 ```text
 Repository access:
-nur die Repositories auswählen, die GitRewind wirklich benötigt
+select only the repositories that GitRewind really needs
 
 Repository permissions:
 Metadata → Read
@@ -418,46 +418,46 @@ Contents → Read and write
 
 ---
 
-### Weitere Schutzmaßnahmen in GitRewind
+### Additional protection measures in GitRewind
 
-GitRewind versucht zusätzlich:
+GitRewind additionally tries to:
 
-- GitHub-Tokens aus Protokollausgaben zu maskieren
-- den Token nicht dauerhaft in der Git-Remote-URL (`.git/config`) zu speichern
-- den Token nur für authentifizierte GitHub-Aufrufe zu verwenden
-- auf Linux/macOS keinen unsicheren Datei-Fallback zu verwenden
-- den Token beim Abmelden aus dem sicheren Schlüsselspeicher zu entfernen
+- mask GitHub tokens in log output
+- not store the token persistently in the Git remote URL (`.git/config`)
+- use the token only for authenticated GitHub calls
+- not use an insecure file fallback on Linux/macOS
+- remove the token from the secure key storage on logout
 
-Trotzdem gilt:
+Still:
 
-> Ein GitHub Personal Access Token ist ein Zugangsschlüssel. Veröffentliche ihn niemals in einem Repository, Screenshot, Log oder Chat.
+> A GitHub Personal Access Token is an access key. Never publish it in a repository, screenshot, log, or chat.
 
 ---
 </details>
 <details>
-<summary><h3>8. Wie benutze ich GitRewind?</h3></summary>
+<summary><h3>8. How do I use GitRewind?</h3></summary>
 
-### Schritt 1 – Voraussetzungen installieren
+### Step 1 – Install the prerequisites
 
-Prüfe zuerst Git:
+First check Git:
 
 ```bash
 git --version
 ```
 
-Installiere danach die Python-Abhängigkeiten:
+Then install the Python dependencies:
 
 ```bash
 pip install PyQt6
 ```
 
-Unter macOS/Linux zusätzlich:
+Additionally on macOS/Linux:
 
 ```bash
 pip install keyring
 ```
 
-Unter Linux für Secret Service typischerweise zusätzlich:
+On Linux, typically additionally for the Secret Service:
 
 ```bash
 pip install secretstorage
@@ -465,9 +465,9 @@ pip install secretstorage
 
 ---
 
-### Schritt 2 – GitHub Token erstellen
+### Step 2 – Create a GitHub token
 
-Öffne in GitHub:
+Open in GitHub:
 
 ```text
 Settings
@@ -476,14 +476,14 @@ Settings
 → Fine-grained tokens
 ```
 
-Erstelle einen neuen Token.
+Create a new token.
 
-Empfohlene Einstellungen:
+Recommended settings:
 
 ```text
 Repository access:
 Only select repositories
-→ gewünschte Repositories auswählen
+→ select the desired repositories
 
 Repository permissions:
 Metadata → Read
@@ -492,9 +492,9 @@ Contents → Read and write
 
 ---
 
-### Schritt 3 – GitRewind starten
+### Step 3 – Start GitRewind
 
-Starte:
+Start:
 
 ```bash
 python git_rewind_gui.py
@@ -502,111 +502,111 @@ python git_rewind_gui.py
 
 ---
 
-### Schritt 4 – Bei GitHub anmelden
+### Step 4 – Sign in to GitHub
 
-1. GitHub-Token in GitRewind einfügen.
-2. **„Überprüfen & speichern“** drücken.
-3. GitRewind prüft den Token.
-4. Bei erfolgreicher Anmeldung wird der Token lokal verschlüsselt gespeichert.
-
----
-
-### Schritt 5 – Repository auswählen
-
-Wähle im Repository-Dropdown das Repository aus, das zurückgesetzt werden soll.
-
-GitRewind lädt anschließend:
-
-- Repository-Informationen
-- Push-Berechtigungen
-- Commit-Historie
+1. Enter the GitHub token in GitRewind.
+2. Press **"Verify + save"**.
+3. GitRewind checks the token.
+4. On successful sign-in, the token is stored encrypted locally.
 
 ---
 
-### Schritt 6 – Ziel-Commit auswählen
+### Step 5 – Select a repository
 
-Unter:
+Select in the repository dropdown the repository that should be reset.
+
+GitRewind then loads:
+
+- repository information
+- push permissions
+- commit history
+
+---
+
+### Step 6 – Select the target commit
+
+Under:
 
 ```text
-Ziel-Commit (gut)
+Target commit (good)
 ```
 
-wählst du den Commit aus, auf den das Repository zurückgesetzt werden soll.
+select the commit to which the repository should be reset.
 
-Beispiel:
+Example:
 
 ```text
-A = funktionierender Commit
-B = fehlerhafter Commit
+A = working commit
+B = broken commit
 ```
 
-Dann:
+Then:
 
 ```text
-Ziel-Commit = A
+Target commit = A
 ```
 
 ---
 
-### Schritt 7 – Problem-Commit auswählen
+### Step 7 – Select the problem commit
 
-Unter:
+Under:
 
 ```text
-Problem-Commit (kaputt)
+Problem commit (broken)
 ```
 
-wählst du den Commit aus, der den fehlerhaften Stand repräsentiert.
+select the commit that represents the broken state.
 
-Dieser Commit wird unter anderem für den Namen des lokalen Backup-Branches verwendet.
+This commit is used, among other things, for the name of the local backup branch.
 
 ---
 
-### Schritt 8 – Optional: Parameter prüfen
+### Step 8 – Optional: validate parameters
 
-Drücke:
+Press:
 
 ```text
-Parameter prüfen
+Validate parameters
 ```
 
-GitRewind kontrolliert unter anderem:
+GitRewind checks, among other things:
 
-- GitHub-Login
-- Repository
-- Ziel-Commit
-- Problem-Commit
-- grundlegende Push-Berechtigung
+- GitHub login
+- repository
+- target commit
+- problem commit
+- basic push permission
 
 ---
 
-### Schritt 9 – Rollback starten
+### Step 9 – Start the rollback
 
-Drücke:
+Press:
 
 ```text
-Rollback starten
+Start rollback
 ```
 
-GitRewind führt den Rollback aus.
+GitRewind performs the rollback.
 
-Dabei wird:
+It does the following:
 
-1. Git geprüft.
-2. Das Repository bei Bedarf geklont.
-3. Der aktuelle GitHub-Stand geladen.
-4. Ein lokaler Backup-Branch angelegt.
-5. `main` auf den Ziel-Commit gesetzt.
-6. Der Remote-Stand erneut geprüft.
-7. `main` mit `--force-with-lease` zu GitHub übertragen.
+1. Checks Git.
+2. Clones the repository if needed.
+3. Loads the current GitHub state.
+4. Creates a local backup branch.
+5. Sets `main` to the target commit.
+6. Checks the remote state again.
+7. Pushes `main` to GitHub with `--force-with-lease`.
 
 ---
 
-### Schritt 10 – Ergebnis prüfen
+### Step 10 – Check the result
 
-Nach erfolgreichem Abschluss solltest du auf GitHub kontrollieren, ob `main` jetzt auf den gewünschten Commit zeigt.
+After a successful completion, you should check on GitHub whether `main` now points to the desired commit.
 
-Kontrolliere zusätzlich lokal:
+Additionally check locally:
 
 ```bash
 git log --oneline -10
@@ -614,55 +614,55 @@ git log --oneline -10
 
 ---
 
-## Wichtige Hinweise
+## Important notes
 
-### Kein automatisches `git pull`
+### No automatic `git pull`
 
-Wenn Git meldet:
+If Git reports:
 
 ```text
 Your branch is behind 'origin/main'
 ```
 
-ist das während eines Rollbacks nicht automatisch ein Fehler.
+that is not automatically an error during a rollback.
 
-Ein `git pull` würde den Commit, den du gerade entfernen möchtest, unter Umständen wieder einbinden.
+A `git pull` would re-include the commit you are trying to remove.
 
-### Force-Push verändert Branch-Historie
+### Force push changes the branch history
 
-Der Rollback setzt `main` direkt auf einen früheren Commit.
+The rollback sets `main` directly to an earlier commit.
 
-Das bedeutet, dass neuere Commits danach nicht mehr Teil der normalen `main`-Historie sind.
+This means that newer commits are no longer part of the normal `main` history.
 
-### Zusammenarbeit mit anderen
+### Collaboration with others
 
-Wenn mehrere Personen gleichzeitig am Repository arbeiten, solltest du den Rollback vorher abstimmen.
+If multiple people are working on the repository at the same time, you should coordinate the rollback in advance.
 
-Andere lokale Klone können nach einem History-Rewrite von `main` nicht mehr zum neuen Remote-Verlauf passen.
+Other local clones may no longer match the new remote history after `main` has been rewritten.
 
-### Backup bleibt lokal
+### The backup stays local
 
-Der von GitRewind erzeugte Backup-Branch ist ein lokaler Sicherheitsanker. Prüfe ihn, bevor du lokale Repository-Daten löschst.
+The backup branch created by GitRewind is a local safety anchor. Check it before deleting local repository data.
 
 ---
 
-## Fehlerbehebung
+## Troubleshooting
 
 ### HTTP 403 / Permission denied
 
-Beispiel:
+Example:
 
 ```text
 Permission to OWNER/REPO.git denied
 HTTP 403
 ```
 
-Prüfe:
+Check:
 
 ```text
-Fine-Grained Token
+Fine-grained token
 → Repository access
-→ Repository ausgewählt
+→ repository selected
 
 Repository permissions
 → Contents
@@ -671,9 +671,9 @@ Repository permissions
 
 ---
 
-### Token ungültig
+### Token invalid
 
-Bei:
+With:
 
 ```text
 401
@@ -681,13 +681,13 @@ Bad credentials
 Authentication failed
 ```
 
-Token in GitHub prüfen bzw. neu erzeugen und in GitRewind erneut anmelden.
+Check the token on GitHub, or regenerate it, and sign in again with GitRewind.
 
 ---
 
-### Force-Push wird blockiert
+### Force push is blocked
 
-Bei Meldungen wie:
+With messages like:
 
 ```text
 GH006
@@ -696,38 +696,38 @@ protected branch
 repository rule violations
 ```
 
-prüfe die Branch Protection bzw. GitHub Rulesets.
+check the branch protection or GitHub rulesets.
 
 ---
 
-### Git wurde nicht gefunden
+### Git was not found
 
-Prüfe:
+Check:
 
 ```bash
 git --version
 ```
 
-Wenn der Befehl nicht funktioniert, Git installieren und GitRewind danach erneut starten.
+If the command does not work, install Git and then start GitRewind again.
 
 ---
 
-## Sicherheitsempfehlung
+## Security recommendation
 
-Für GitRewind solltest du einen **eigenen Fine-Grained Token nur für dieses Tool** verwenden.
+For GitRewind, you should use a **separate fine-grained token dedicated to this tool**.
 
-Empfohlen:
+Recommended:
 
 ```text
 Repository access:
-nur benötigte Repositories
+only the repositories you need
 
 Permissions:
 Metadata → Read
 Contents → Read and write
 ```
 
-Je weniger Rechte der Token besitzt, desto geringer ist der mögliche Schaden, falls er kompromittiert wird.
+The fewer permissions the token has, the lower the potential damage if it is compromised.
 
 ---
 </details>

@@ -1,19 +1,19 @@
-"""GitRewind v1.0 – GitHub-Repo auf den guten Commit zurücksetzen.
+"""GitRewind v1.1 – Reset a GitHub repository to a good commit.
 
-Fluss (identisch zum alten rollback.bat-Flow):
-  1.  GitHub-Login      -> Token im Browser, verschlüsselt neben der App gespeichert
-  2.  Repository wählen -> Dropdown aller Repos des angemeldeten Users
-  3.  Commits wählen    -> Dropdown (mit Suche) der Commit-Historie
-  4.  Git-Check         -> git --version
-  5.  Clone (falls neu) -> git clone <REPO_URL> <REPO_DIR>
-  6.  Fetch             -> git fetch --all --prune
-  7.  Backup-Branch     -> git branch backup-before-rollback-<PROBLEM> <PROBLEM>
-  8.  Lokal resetten    -> git checkout -B main <ZIEL>
-  9.  Fork aktualisieren -> git push --force-with-lease origin main
+Flow (identical to the old rollback.bat flow):
+  1.  GitHub login       -> token in the browser, stored encrypted next to the app
+  2.  Choose repository  -> dropdown of all repos for the signed-in user
+  3.  Choose commits     -> dropdown (with search) of the commit history
+  4.  Git check          -> git --version
+  5.  Clone (if new)     -> git clone <REPO_URL> <REPO_DIR>
+  6.  Fetch              -> git fetch --all --prune
+  7.  Backup branch      -> git branch backup-before-rollback-<PROBLEM> <PROBLEM>
+  8.  Reset locally      -> git checkout -B main <TARGET>
+  9.  Update fork        -> git push --force-with-lease origin main
 
-Der GitHub-Token wird verschlüsselt neben der App gespeichert
-(git_rewind_secret.enc – Windows: DPAPI, sonst Fernet), damit beim
-nächsten Start kein erneutes Login nötig ist.
+The GitHub token is stored encrypted next to the app
+(git_rewind_secret.enc – Windows: DPAPI, otherwise Fernet), so that
+no re-login is needed on the next start.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -52,8 +52,8 @@ from PyQt6.QtWidgets import (
 )
 
 APP_NAME = "GitRewind"
-APP_VERSION = "v1.0"
-if getattr(sys, "frozen", False):  # PyInstaller onefile: __file__ zeigt auf ein Temp-Extraktionsverzeichnis, die App liegt neben dem Exe
+APP_VERSION = "v1.1"
+if getattr(sys, "frozen", False):  # PyInstaller onefile: __file__ points to a temp extraction dir, the app sits next to the Exe
     APP_DIR = Path(sys.executable).resolve().parent
     ICON_PATH = Path(getattr(sys, "_MEIPASS", APP_DIR)) / "icon.png"
 else:
@@ -260,18 +260,18 @@ QPushButton:disabled { color: #7f90b0; background-color: rgba(16, 25, 44, 0.92);
 """
 
 
-# ---------------------------------------------------------------- Hilfsfunktionen
+# ---------------------------------------------------------------- Helper functions
 
 
 def build_repo_url(user: str, repo: str) -> str:
-    """REPO_URL aus GitHub-User + Repo-Name bauen (stimmt immer überein)."""
+    """Build the REPO_URL from GitHub user + repo name (always in sync)."""
     if not user or not repo:
         return ""
     return f"https://github.com/{user}/{repo}.git"
 
 
 def repo_path_for(repo_dir: str) -> Path:
-    """Repo-Ordner: absolut oder relativ zu diesem App-Ordner."""
+    """Repo folder: absolute or relative to this app's folder."""
     p = Path(repo_dir)
     if not p.is_absolute():
         p = APP_DIR / p
@@ -279,14 +279,14 @@ def repo_path_for(repo_dir: str) -> Path:
 
 
 def inject_token(url: str, token: str) -> str:
-    """Token in die GitHub-HTTPS-URL einfügen (andere URLs bleiben unverändert)."""
+    """Inject the token into a GitHub HTTPS URL (other URLs are left unchanged)."""
     if token and url.startswith("https://github.com"):
         return url.replace("https://", f"https://{token}@", 1)
     return url
 
 
 def mask(line: str, token: str) -> str:
-    """GitHub-Tokens zuverlässig aus Log-Zeilen entfernen."""
+    """Reliably remove GitHub tokens from log lines."""
     if token:
         line = line.replace(token, "****")
     line = re.sub(r"github_pat_[A-Za-z0-9_]+", "github_pat_****", line)
@@ -295,7 +295,7 @@ def mask(line: str, token: str) -> str:
 
 
 def run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
-    """Git ausführen, liefert (Return-Code, stdout+stderr)."""
+    """Run git, returns (return code, stdout+stderr)."""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     try:
         p = subprocess.run(
@@ -308,15 +308,15 @@ def run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
             errors="replace",
         )
     except FileNotFoundError:
-        return 127, "Git wurde nicht gefunden."
+        return 127, "Git was not found."
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-# ---------------------------------------------------------------- Token-Speicher
+# ---------------------------------------------------------------- Token storage
 
 
 def _dpapi(blob: bytes, protect: bool) -> bytes:
-    """Windows-DPAPI: Daten für den aktuellen User verschlüsseln/entschlüsseln."""
+    """Windows DPAPI: encrypt/decrypt data for the current user."""
     import ctypes
 
     class _DataBlob(ctypes.Structure):
@@ -332,14 +332,14 @@ def _dpapi(blob: bytes, protect: bool) -> bytes:
     dst = _DataBlob()
     fn = crypt32.CryptProtectData if protect else crypt32.CryptUnprotectData
     if not fn(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(dst)):
-        raise RuntimeError(f"DPAPI fehlgeschlagen (Fehler-Code {ctypes.get_last_error()})")
+        raise RuntimeError(f"DPAPI failed (error code {ctypes.get_last_error()})")
     out = ctypes.string_at(dst.pbData, dst.cbData)
     kernel32.LocalFree(dst.pbData)
     return out
 
 
 def _fernet():
-    """Fernet-Fallback ohne Windows-DPAPI (z. B. Linux/macOS)."""
+    """Fernet fallback without Windows DPAPI (e.g. Linux/macOS)."""
     from cryptography.fernet import Fernet
 
     key = APP_DIR / "git_rewind.key"
@@ -353,14 +353,14 @@ def _fernet():
 
 
 def save_secret(token: str, login: str) -> None:
-    """Token + Login verschlüsselt neben der App speichern."""
+    """Save the token + login encrypted next to the app."""
     payload = json.dumps({"token": token, "login": login}).encode("utf-8")
     blob = _dpapi(payload, True) if os.name == "nt" else _fernet().encrypt(payload)
     SECRET_FILE.write_bytes(blob)
 
 
 def load_secret() -> dict | None:
-    """Gespeichertes Secret laden; None bei Abwesenheit oder Lesefehlern."""
+    """Load the stored secret; None if missing or on read errors."""
     if not SECRET_FILE.exists():
         return None
     try:
@@ -376,11 +376,11 @@ def delete_secret() -> None:
     SECRET_FILE.unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------- GitHub-API
+# ---------------------------------------------------------------- GitHub API
 
 
 def gh_get(path: str, token: str):
-    """GET gegen die GitHub-API, liefert das JSON."""
+    """GET against the GitHub API, returns the JSON."""
     req = urllib.request.Request(
         "https://api.github.com" + path,
         headers={
@@ -393,18 +393,18 @@ def gh_get(path: str, token: str):
         with urllib.request.urlopen(req, timeout=20) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"GitHub antwortet mit HTTP {exc.code} (Pfad: {path})") from exc
+        raise RuntimeError(f"GitHub responded with HTTP {exc.code} (path: {path})") from exc
     except Exception as exc:
-        raise RuntimeError(f"Keine Verbindung zu GitHub: {exc}") from exc
+        raise RuntimeError(f"No connection to GitHub: {exc}") from exc
 
 
 def list_repos(token: str) -> list[dict]:
-    """Alle Repos des angemeldeten Users (erste 100)."""
+    """All repos of the signed-in user (first 100)."""
     return gh_get("/user/repos?per_page=100&type=all&sort=updated", token)
 
 
 def parse_commits(items: list) -> list[tuple[str, str, str, str]]:
-    """GitHub-Commit-Liste -> [(sha, author, date, subject)] für die Dropdowns."""
+    """GitHub commit list -> [(sha, author, date, subject)] for the dropdowns."""
     out = []
     for it in items:
         sha = it.get("sha", "")
@@ -417,7 +417,7 @@ def parse_commits(items: list) -> list[tuple[str, str, str, str]]:
 
 
 def fetch_all_commits(token: str, user: str, repo: str) -> list[dict]:
-    """Bis zu MAX_COMMITS Commits aus der GitHub-API holen (paginiert)."""
+    """Fetch up to MAX_COMMITS commits from the GitHub API (paginated)."""
     got: list[dict] = []
     page = 1
     while len(got) < MAX_COMMITS:
@@ -432,7 +432,7 @@ def fetch_all_commits(token: str, user: str, repo: str) -> list[dict]:
 
 
 def verify_token(token: str) -> tuple[bool, str]:
-    """Token gegen GitHub prüfen. Liefert (ok, Login-Name ODER Fehlermeldung)."""
+    """Check the token against GitHub. Returns (ok, login name or error message)."""
     try:
         data = gh_get("/user", token)
         return True, str(data.get("login", ""))
@@ -441,16 +441,16 @@ def verify_token(token: str) -> tuple[bool, str]:
 
 
 def check_repo_push_permission(token: str, owner: str, repo: str) -> tuple[bool, str]:
-    """Prüft, ob der Token auf das ausgewählte Repository pushen darf."""
+    """Check whether the token can push to the selected repository."""
     try:
         data = gh_get(f"/repos/{owner}/{repo}", token)
         permissions = data.get("permissions") or {}
         if permissions.get("push") is True:
             return True, ""
         return False, (
-            "Der gespeicherte GitHub-Token besitzt keine Schreibrechte für dieses Repository. "
-            "Bei einem Fine-Grained Token muss das Repository freigegeben und "
-            "'Contents: Read and write' gesetzt sein."
+            "The saved GitHub token does not have write access to this repository. "
+            "A fine-grained token must grant access to the repository and "
+            "'Contents: Read and write' must be set."
         )
     except Exception as exc:
         return False, str(exc)
@@ -460,9 +460,9 @@ def check_repo_push_permission(token: str, owner: str, repo: str) -> tuple[bool,
 
 
 class TokenCheckWorker(QThread):
-    """Prüft einen GitHub-Token im Hintergrund (Autologin + manueller Login)."""
+    """Verifies a GitHub token in the background (auto-login + manual login)."""
 
-    done = pyqtSignal(bool, str)  # (ok, Login-Name ODER Fehlermeldung)
+    done = pyqtSignal(bool, str)  # (ok, login name or error message)
 
     def __init__(self, token: str):
         super().__init__()
@@ -474,9 +474,9 @@ class TokenCheckWorker(QThread):
 
 
 class ApiWorker(QThread):
-    """Führt eine GitHub-API-Funktion im Hintergrund aus."""
+    """Runs a GitHub API function in the background."""
 
-    done = pyqtSignal(object, str)  # (Ergebnis, Fehlermeldung)
+    done = pyqtSignal(object, str)  # (result, error message)
 
     def __init__(self, fn, *args):
         super().__init__()
@@ -491,10 +491,10 @@ class ApiWorker(QThread):
 
 
 class GitWorker(QThread):
-    """Führt die Git-Schritte in einem Thread aus (GUI bleibt bedienbar)."""
+    """Runs the git steps in a thread (the GUI stays interactive)."""
 
     log = pyqtSignal(str)
-    done = pyqtSignal(bool, str)  # (ok, "local" ODER "push" | Fehlermeldung)
+    done = pyqtSignal(bool, str)  # (ok, "local" or "push" | error message)
 
     def __init__(self, cfg: dict, push: bool):
         super().__init__()
@@ -511,7 +511,7 @@ class GitWorker(QThread):
         cwd: Path | None = None,
         header: str | None = None,
     ) -> tuple[int, str]:
-        """Git-Schritt ausführen und protokollieren; liefert (Return-Code, Ausgabe)."""
+        """Run a git step and log it; returns (return code, output)."""
         self._emit(header or f"$ git {' '.join(args)}")
         rc, out = run_git(args, cwd)
         for line in out.splitlines():
@@ -520,20 +520,20 @@ class GitWorker(QThread):
 
     @staticmethod
     def _short_error(out: str) -> str:
-        """Wichtigste Fehlerzeile: letzte „fatal:"-Zeile, sonst „remote:", sonst letzte Zeile."""
+        """Most important error line: the last "fatal:" line, else "remote:", else the last line."""
         lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
         for needle in ("fatal:", "remote:"):
             for ln in reversed(lines):
                 if ln.startswith(needle):
                     return ln
-        return lines[-1] if lines else "keine Ausgabe erhalten"
+        return lines[-1] if lines else "no output received"
 
     def _fail(self, action: str, out: str) -> str:
-        return f"FEHLER: {action} fehlgeschlagen.\n{self._short_error(out)}"
+        return f"ERROR: {action} failed.\n{self._short_error(out)}"
 
     @staticmethod
     def _classify_push_error(out: str) -> tuple[str, str]:
-        """Push-Fehler in Auth, Rechte, Ruleset oder unbekannt einordnen."""
+        """Classify the push error as auth, permissions, ruleset, or unknown."""
         lower = out.lower()
         branch_markers = (
             "gh006", "gh013", "protected branch",
@@ -549,12 +549,12 @@ class GitWorker(QThread):
             "write access to repository not granted",
         )
         if any(x in lower for x in branch_markers):
-            return "branch_protection", "GitHub Branch Protection bzw. ein Ruleset blockiert den Force-Push."
+            return "branch_protection", "GitHub branch protection or a ruleset is blocking the force push."
         if any(x in lower for x in auth_markers):
-            return "authentication", "Der GitHub-Token ist ungültig, abgelaufen oder widerrufen."
+            return "authentication", "The GitHub token is invalid, expired, or revoked."
         if any(x in lower for x in permission_markers):
-            return "permission", "Der GitHub-Token besitzt keine ausreichenden Schreibrechte."
-        return "unknown", "Der Push ist aus einem unbekannten Git-Fehler fehlgeschlagen."
+            return "permission", "The GitHub token does not have sufficient write access."
+        return "unknown", "The push failed due to an unknown git error."
 
     def run(self):
         try:
@@ -563,7 +563,7 @@ class GitWorker(QThread):
             else:
                 self._phase_local()
         except Exception as exc:
-            self.done.emit(False, f"FEHLER: {exc}")
+            self.done.emit(False, f"ERROR: {exc}")
 
     def _phase_local(self):
         cfg = self.cfg
@@ -573,21 +573,21 @@ class GitWorker(QThread):
         self._emit("=" * 62)
         self._emit(f"{APP_NAME} {APP_VERSION} - Rollback")
         self._emit(f"Repo:      {cfg['repo']}")
-        self._emit(f"Ziel:      {good}")
+        self._emit(f"Target:    {good}")
         self._emit(f"Problem:   {cfg['broken']}")
-        self._emit(f"Ordner:    {path}")
+        self._emit(f"Folder:    {path}")
         self._emit("=" * 62)
         self._emit("")
 
-        rc, out = self._git(["--version"], header="Git wird geprüft…")
+        rc, out = self._git(["--version"], header="Checking git…")
         if rc != 0:
-            self._emit("FEHLER: Git wurde nicht gefunden – bitte installieren.")
-            self.done.emit(False, "FEHLER: Git wurde nicht gefunden.")
+            self._emit("ERROR: git was not found - please install it.")
+            self.done.emit(False, "ERROR: git was not found.")
             return
 
         if not (path / ".git").exists():
             self._emit("")
-            self._emit("Repository wird geklont…")
+            self._emit("Cloning the repository…")
             path.mkdir(parents=True, exist_ok=True)
             rc, out = self._git(["clone", inject_token(cfg["url"], self._tok), str(path)])
             if rc != 0:
@@ -601,41 +601,41 @@ class GitWorker(QThread):
         rc, out = self._git(
             ["fetch", auth_url, "--prune", "+refs/heads/*:refs/remotes/origin/*"],
             cwd=path,
-            header="GitHub-Stand wird geladen…",
+            header="Loading the GitHub state…",
         )
         if rc != 0:
-            self.done.emit(False, self._fail("Fetch (GitHub-Verbindung)", out))
+            self.done.emit(False, self._fail("Fetch (GitHub connection)", out))
             return
 
         self._emit("")
-        self._emit("Sichere den aktuellen Stand als Backup-Branch…")
+        self._emit("Saving the current state as a backup branch…")
         backup_branch = f"backup-before-rollback-{cfg['broken']}"
         rc_check, _ = run_git(
             ["show-ref", "--verify", "--quiet", f"refs/heads/{backup_branch}"],
             cwd=path,
         )
         if rc_check == 0:
-            self._emit("Backup-Branch existiert bereits – vorhandenes Backup wird beibehalten.")
+            self._emit("Backup branch already exists - keeping the existing backup.")
         else:
             rc, out = self._git(["branch", backup_branch, cfg["broken"]], cwd=path)
             if rc != 0:
-                self.done.emit(False, self._fail("Backup-Branch erstellen", out))
+                self.done.emit(False, self._fail("Create backup branch", out))
                 return
         self._emit("")
 
         rc, out = self._git(["checkout", "-B", "main", good], cwd=path)
         if rc != 0:
-            self.done.emit(False, self._fail(f"Checkout von {good[:7]}", out))
+            self.done.emit(False, self._fail(f"Checkout of {good[:7]}", out))
             return
 
         self._emit("")
         self._emit("=" * 62)
-        self._emit(f"Lokaler Stand wurde erfolgreich auf {good} zurückgesetzt.")
+        self._emit(f"The local state was successfully reset to {good}.")
         self._emit("=" * 62)
         self.done.emit(True, "local")
 
     def _sync_origin(self, path: Path):
-        """Origin ohne Token speichern; Authentifizierung erfolgt nur pro Git-Aufruf."""
+        """Keep origin without a token; authentication happens per git call only."""
         url = self.cfg["url"]
         rc, out = run_git(["remote", "get-url", "origin"], cwd=path)
         if rc != 0:
@@ -649,24 +649,24 @@ class GitWorker(QThread):
         auth_url = inject_token(cfg["url"], self._tok)
 
         self._emit("")
-        self._emit("Aktualisiere Remote-Stand vor dem Push…")
+        self._emit("Updating the remote state before the push…")
         rc, out = self._git(
             ["fetch", auth_url, "main:refs/remotes/origin/main"],
             cwd=path,
-            header="Remote main wird aktualisiert…",
+            header="Updating remote main…",
         )
         if rc != 0:
-            self.done.emit(False, self._fail("Remote-Stand aktualisieren", out))
+            self.done.emit(False, self._fail("Update remote state", out))
             return
 
         rc_sha, lease_sha = run_git(["rev-parse", "refs/remotes/origin/main"], cwd=path)
         lease_sha = lease_sha.strip() if rc_sha == 0 else ""
         if not lease_sha:
-            self.done.emit(False, "FEHLER: Remote-Stand von origin/main konnte nicht bestimmt werden.")
+            self.done.emit(False, "ERROR: the remote state of origin/main could not be determined.")
             return
 
         self._emit("")
-        self._emit("Pushe mit --force-with-lease (Fork wird aktualisiert)…")
+        self._emit("Pushing with --force-with-lease (updating the fork)…")
         rc, out = self._git(
             ["push", f"--force-with-lease=main:{lease_sha}", auth_url, "main:main"],
             cwd=path,
@@ -674,30 +674,30 @@ class GitWorker(QThread):
         )
         if rc != 0:
             error_type, explanation = self._classify_push_error(out)
-            self._emit("FEHLER: Push fehlgeschlagen – " + self._short_error(out))
+            self._emit("ERROR: push failed - " + self._short_error(out))
             common = (
-                "\n\nDer lokale Rollback wurde erfolgreich durchgeführt."
-                "\nDer Remote-Branch auf GitHub wurde NICHT verändert."
+                "\n\nThe local rollback was completed successfully."
+                "\nThe remote branch on GitHub was NOT changed."
             )
             if error_type == "permission":
                 if self._tok.startswith("github_pat_"):
                     hint = common + (
-                        "\n\nFine-Grained Token erkannt. Prüfe:"
-                        "\n• Repository access: dieses Repository freigeben"
+                        "\n\nFine-grained token detected. Check:"
+                        "\n• Repository access: grant access to this repository"
                         "\n• Repository permissions: Contents = Read and write"
-                        "\nDanach in GitRewind abmelden und erneut anmelden."
+                        "\nThen sign out of GitRewind and sign back in."
                     )
                 else:
                     hint = common + "\n\n" + explanation
             elif error_type == "branch_protection":
                 hint = common + (
-                    "\n\nGitHub blockiert den Force-Push durch Branch Protection oder ein Ruleset."
-                    "\nPrüfe Repository -> Settings -> Rules / Branches."
+                    "\n\nGitHub is blocking the force push via branch protection or a ruleset."
+                    "\nCheck Repository -> Settings -> Rules / Branches."
                 )
             elif error_type == "authentication":
                 hint = common + (
-                    "\n\nDer Token ist ungültig, abgelaufen oder widerrufen."
-                    "\nBitte in GitRewind abmelden und erneut anmelden."
+                    "\n\nThe token is invalid, expired, or revoked."
+                    "\nPlease sign out of GitRewind and sign back in."
                 )
             else:
                 hint = common + "\n\n" + explanation
@@ -705,15 +705,15 @@ class GitWorker(QThread):
             return
 
         self._emit("")
-        self._emit(f"Fork wurde erfolgreich auf {cfg['good']} zurückgesetzt.")
+        self._emit(f"The fork was successfully reset to {cfg['good']}.")
         self.done.emit(True, "push")
 
 
-# ---------------------------------------------------------------- UI-Bausteine
+# ---------------------------------------------------------------- UI components
 
 
 class GitIcon(QWidget):
-    """App-Logo: icon.png neben der App, skaliert."""
+    """App logo: icon.png next to the app, scaled."""
 
     def __init__(self):
         super().__init__()
@@ -733,11 +733,11 @@ class GitIcon(QWidget):
 
 
 class CommitField(QWidget):
-    """Kompakter Commit-Selector mit Suche im Overlay-Popup."""
+    """Compact commit selector with search in an overlay popup."""
 
     MAX_HEIGHT = 320
 
-    def __init__(self, placeholder: str = "Commit auswählen…"):
+    def __init__(self, placeholder: str = "Select a commit…"):
         super().__init__()
         self._entries: list[tuple[str, str]] = []
         self._matches: list[tuple[str, str]] = []
@@ -820,7 +820,7 @@ class CommitField(QWidget):
 
         self._search_popup = QLineEdit(self._box)
         self._search_popup.setObjectName("CommitSearch")
-        self._search_popup.setPlaceholderText("Commit suchen…")
+        self._search_popup.setPlaceholderText("Search commits…")
         self._search_popup.textChanged.connect(self.filter)
         box_lay.addWidget(self._search_popup)
 
@@ -844,7 +844,7 @@ class CommitField(QWidget):
 
     def _update_trigger(self):
         label = next((l for s, l in self._entries if s == self._sha), "")
-        self.trigger.setText(label or "Commit auswählen…")
+        self.trigger.setText(label or "Select a commit…")
 
     def _rebuild_list(self):
         if self._list is None:
@@ -865,7 +865,7 @@ class CommitField(QWidget):
 
 
 class LoginPanel(QWidget):
-    """Login-Ansicht."""
+    """Login view."""
 
     authenticated = pyqtSignal(str, str)
 
@@ -883,32 +883,32 @@ class LoginPanel(QWidget):
         cv.setContentsMargins(28, 28, 28, 28)
         cv.setSpacing(16)
 
-        title = QLabel("GitHub verbinden")
+        title = QLabel("Connect to GitHub")
         title.setObjectName("PageTitle")
         subtitle = QLabel(
-            "Melde dich mit deinem GitHub Personal Access Token an. "
-            "Für Fine-Grained Tokens brauchst du mindestens Metadata: Read und Contents: Read and write."
+            "Sign in with your GitHub Personal Access Token. "
+            "Fine-grained tokens need at least Metadata: Read and Contents: Read and write."
         )
         subtitle.setObjectName("PageSubTitle")
         subtitle.setWordWrap(True)
         cv.addWidget(title)
         cv.addWidget(subtitle)
 
-        self.btn_browser = QPushButton("GitHub im Browser öffnen")
+        self.btn_browser = QPushButton("Open GitHub in the browser")
         self.btn_browser.setObjectName("GhostBtn")
         self.btn_browser.clicked.connect(self._open_browser)
         cv.addWidget(self.btn_browser)
 
         row = QHBoxLayout()
         row.setSpacing(12)
-        # Token-Eingabe etwas höher; Button bleibt kompakt. Beide sind vertikal zentriert.
+        # The token field is a bit taller; the button stays compact. Both are vertically centered.
         TOKEN_H = 52
         BUTTON_H = 54
         self.ed_token = QLineEdit()
         self.ed_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.ed_token.setPlaceholderText("GitHub-Token einfügen …")
+        self.ed_token.setPlaceholderText("Enter your GitHub token …")
         self.ed_token.setFixedHeight(TOKEN_H)
-        self.btn_login = QPushButton("Überprüfen + speichern")
+        self.btn_login = QPushButton("Verify + save")
         self.btn_login.setObjectName("StartBtn")
         self.btn_login.setFixedHeight(BUTTON_H)
         self.btn_login.setStyleSheet("font-size: 15px; padding: 10px 24px;")
@@ -926,8 +926,8 @@ class LoginPanel(QWidget):
         outer.addStretch(1)
 
         self._check_worker: TokenCheckWorker | None = None
-        # QThread-Objekte bis zum echten Thread-Ende am Leben halten.
-        # Sonst kann PyQt mit „QThread: Destroyed while thread is still running“ abstürzen.
+        # Keep QThread objects alive until the thread has really finished.
+        # Otherwise PyQt can crash with "QThread: Destroyed while thread is still running".
         self._thread_refs: list[QThread] = []
 
     def _track_thread(self, worker: QThread) -> None:
@@ -951,15 +951,15 @@ class LoginPanel(QWidget):
 
     def _open_browser(self):
         webbrowser.open(TOKEN_PAGE)
-        self.set_status("GitHub im Browser geöffnet – Token anlegen und hier einfügen.")
+        self.set_status("GitHub opened in the browser - create a token and paste it here.")
 
     def _on_login(self):
         token = self.ed_token.text().strip()
         if len(token) < 10:
-            QMessageBox.warning(self, "Token", "Bitte einen gültigen GitHub-Token eingeben (mindestens 10 Zeichen).")
+            QMessageBox.warning(self, "Token", "Please enter a valid GitHub token (at least 10 characters).")
             return
         self.set_busy(True)
-        self.set_status("Token wird geprüft…")
+        self.set_status("Verifying the token…")
         self._check_worker = TokenCheckWorker(token)
         self._track_thread(self._check_worker)
         self._check_worker.done.connect(self.check_finished)
@@ -975,15 +975,15 @@ class LoginPanel(QWidget):
         try:
             save_secret(token, info)
         except Exception as exc:
-            QMessageBox.critical(self, "Speichern fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, "Saving failed", str(exc))
             self.set_busy(False)
             return
-        self.set_status(f"Angemeldet als {info} – Token sicher gespeichert.")
+        self.set_status(f"Signed in as {info} - token saved securely.")
         self.authenticated.emit(info, token)
 
 
 class MainPanel(QWidget):
-    """Zentrale App-Ansicht inkl. Rollback-Seite und Protokoll-Seite."""
+    """Main app view, including the rollback page and the log page."""
 
     start_clicked = pyqtSignal()
     validate_clicked = pyqtSignal()
@@ -1015,9 +1015,9 @@ class MainPanel(QWidget):
         sv.setContentsMargins(28, 26, 28, 22)
         sv.setSpacing(16)
 
-        title = QLabel("Neuen Rollback erstellen")
+        title = QLabel("Create a new rollback")
         title.setObjectName("PageTitle")
-        subtitle = QLabel("In 3 einfachen Schritten zum vorherigen Zustand zurückkehren.")
+        subtitle = QLabel("Return to a previous state in 3 simple steps.")
         subtitle.setObjectName("PageSubTitle")
         sv.addWidget(title)
         sv.addWidget(subtitle)
@@ -1040,9 +1040,9 @@ class MainPanel(QWidget):
         logv = QVBoxLayout(log_shell)
         logv.setContentsMargins(28, 26, 28, 22)
         logv.setSpacing(12)
-        log_title = QLabel("Protokoll")
+        log_title = QLabel("Log")
         log_title.setObjectName("PageTitle")
-        log_sub = QLabel("Alle Aktionen, Git-Schritte und Fehlermeldungen.")
+        log_sub = QLabel("All actions, git steps, and error messages.")
         log_sub.setObjectName("PageSubTitle")
         logv.addWidget(log_title)
         logv.addWidget(log_sub)
@@ -1072,9 +1072,9 @@ class MainPanel(QWidget):
 
         left = QVBoxLayout()
         left.setSpacing(2)
-        t = QLabel("Repo auswählen")
+        t = QLabel("Select the repository")
         t.setObjectName("SectionTitle")
-        s = QLabel("Wähle das Repo Verzeichnis")
+        s = QLabel("Choose the repository directory")
         s.setObjectName("SectionSubTitle")
         left.addWidget(t)
         left.addWidget(s)
@@ -1088,7 +1088,7 @@ class MainPanel(QWidget):
         self.combo_repo.setMinimumWidth(360)
         self.ed_path = QLineEdit()
         self.ed_path.setReadOnly(True)
-        self.ed_path.setPlaceholderText("Repo-Pfad (auto)")
+        self.ed_path.setPlaceholderText("Repo path (auto)")
         right.addWidget(self.combo_repo)
         right.addWidget(self.ed_path)
         lay.addLayout(right, 1)
@@ -1110,9 +1110,9 @@ class MainPanel(QWidget):
         head.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         left = QVBoxLayout()
         left.setSpacing(2)
-        t = QLabel("Commits auswählen")
+        t = QLabel("Select the commits")
         t.setObjectName("SectionTitle")
-        s = QLabel("Wähle den guten Stand und den kaputten Stand.")
+        s = QLabel("Choose the good state and the broken state.")
         s.setObjectName("SectionSubTitle")
         left.addWidget(t)
         left.addWidget(s)
@@ -1127,9 +1127,9 @@ class MainPanel(QWidget):
         lv = QVBoxLayout(left_box)
         lv.setContentsMargins(18, 18, 18, 18)
         lv.setSpacing(10)
-        l1 = QLabel("Ziel-Commit")
+        l1 = QLabel("Target commit")
         l1.setObjectName("SectionTitle")
-        l2 = QLabel("Der Commit, zu dem zurückgerollt werden soll.")
+        l2 = QLabel("The commit you want to roll back to.")
         l2.setObjectName("SectionSubTitle")
         self.commit_ziel = CommitField()
         lv.addWidget(l1)
@@ -1142,9 +1142,9 @@ class MainPanel(QWidget):
         rv = QVBoxLayout(right_box)
         rv.setContentsMargins(18, 18, 18, 18)
         rv.setSpacing(10)
-        r1 = QLabel("Problem-Commit")
+        r1 = QLabel("Problem commit")
         r1.setObjectName("SectionTitle")
-        r2 = QLabel("Der Commit, der Probleme verursacht.")
+        r2 = QLabel("The commit that is causing the problems.")
         r2.setObjectName("SectionSubTitle")
         self.commit_prob = CommitField()
         rv.addWidget(r1)
@@ -1173,9 +1173,9 @@ class MainPanel(QWidget):
         head.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
         left = QVBoxLayout()
         left.setSpacing(2)
-        t = QLabel("Rollback starten")
+        t = QLabel("Start the rollback")
         t.setObjectName("SectionTitle")
-        s = QLabel("Starte den Rollback-Prozess.")
+        s = QLabel("Start the rollback process.")
         s.setObjectName("SectionSubTitle")
         left.addWidget(t)
         left.addWidget(s)
@@ -1184,11 +1184,11 @@ class MainPanel(QWidget):
 
         btnrow = QHBoxLayout()
         btnrow.setSpacing(12)
-        self.btn_start = QPushButton("⟲   Rollback starten")
+        self.btn_start = QPushButton("⟲   Start rollback")
         self.btn_start.setObjectName("StartBtn")
         self.btn_start.setMinimumHeight(52)
         self.btn_start.clicked.connect(self.start_clicked)
-        self.btn_validate = QPushButton("Parameter prüfen")
+        self.btn_validate = QPushButton("Validate parameters")
         self.btn_validate.setObjectName("GhostBtn")
         self.btn_validate.setMinimumHeight(52)
         self.btn_validate.clicked.connect(self.validate_clicked)
@@ -1235,7 +1235,7 @@ class MainPanel(QWidget):
         self._save_log_file()
 
     def set_status(self, kind: str):
-        """Status nur an den Footer weitergeben; kein Sicherheits-Check-Bereich mehr."""
+        """Just pass the status on to the footer; there is no safety-check area anymore."""
         self.status_changed.emit(kind)
 
     def _save_log_file(self):
@@ -1265,19 +1265,19 @@ class MainPanel(QWidget):
         good = self.commit_ziel.current_sha()
         broken = self.commit_prob.current_sha()
         if not user:
-            errs.append("GitHub-User fehlt (kein Login).")
+            errs.append("GitHub user is missing (no login).")
         if not repo:
-            errs.append("Kein Repository gewählt.")
+            errs.append("No repository selected.")
         if not good:
-            errs.append("Ziel-Commit (gut) nicht gewählt.")
+            errs.append("Target commit (good) not selected.")
         elif not COMMIT_RE.fullmatch(good):
-            errs.append("Ziel-Commit ungültig (hex erwartet).")
+            errs.append("Target commit is invalid (hex expected).")
         if not broken:
-            errs.append("Problem-Commit (kaputt) nicht gewählt.")
+            errs.append("Problem commit (broken) not selected.")
         elif not COMMIT_RE.fullmatch(broken):
-            errs.append("Problem-Commit ungültig (hex erwartet).")
+            errs.append("Problem commit is invalid (hex expected).")
         if good and broken and good == broken:
-            errs.append("Ziel- und Problem-Commit sind identisch – Rollback sinnlos.")
+            errs.append("Target and problem commits are identical - the rollback would be pointless.")
         cfg = {
             "user": user,
             "repo": repo,
@@ -1305,7 +1305,7 @@ class MainWindow(QWidget):
         self._repo_push_allowed = False
         self._repo_permission_error = ""
         self._force_close = False
-        # Laufende QThreads zusätzlich referenzieren, bis finished() ausgelöst wurde.
+        # Reference the running QThreads additionally until finished() has been emitted.
         self._thread_refs: list[QThread] = []
 
         outer = QVBoxLayout(self)
@@ -1339,10 +1339,10 @@ class MainWindow(QWidget):
         brand_col.addLayout(top_brand)
         head.addLayout(brand_col)
         head.addStretch(1)
-        self.lbl_session = QLabel("Nicht angemeldet")
+        self.lbl_session = QLabel("Not signed in")
         self.lbl_session.setObjectName("HeaderSession")
         head.addWidget(self.lbl_session)
-        self.btn_logout = QPushButton("Abmelden")
+        self.btn_logout = QPushButton("Sign out")
         self.btn_logout.setObjectName("LogoutBtn")
         self.btn_logout.clicked.connect(self.on_logout)
         self.btn_logout.setEnabled(False)
@@ -1373,7 +1373,7 @@ class MainWindow(QWidget):
         self.btn_nav_rollback.setObjectName("SideNav")
         self.btn_nav_rollback.setCheckable(True)
         self.btn_nav_rollback.setChecked(True)
-        self.btn_nav_logs = QPushButton("☰   Protokoll")
+        self.btn_nav_logs = QPushButton("☰   Log")
         self.btn_nav_logs.setObjectName("SideNav")
         self.btn_nav_logs.setCheckable(True)
         self.btn_nav_rollback.clicked.connect(lambda: self.switch_section("rollback"))
@@ -1395,11 +1395,11 @@ class MainWindow(QWidget):
         fv = QHBoxLayout(footer)
         fv.setContentsMargins(16, 12, 16, 12)
         fv.setSpacing(10)
-        self.lbl_footer_status = QLabel("● Bereit")
+        self.lbl_footer_status = QLabel("● Ready")
         self.lbl_footer_status.setObjectName("FooterStatus")
         fv.addWidget(self.lbl_footer_status)
         fv.addStretch(1)
-        self.lbl_footer_conn = QLabel("GitHub nicht verbunden")
+        self.lbl_footer_conn = QLabel("GitHub not connected")
         self.lbl_footer_conn.setObjectName("FooterConn")
         fv.addWidget(self.lbl_footer_conn)
         surface_layout.addWidget(footer)
@@ -1426,18 +1426,18 @@ class MainWindow(QWidget):
 
     def _set_connected(self, connected: bool):
         if connected:
-            self.lbl_footer_conn.setText("GitHub verbunden  ✓")
+            self.lbl_footer_conn.setText("GitHub connected  ✓")
             self.lbl_footer_conn.setStyleSheet("color: #dffdf5; font-weight: 600;")
         else:
-            self.lbl_footer_conn.setText("GitHub nicht verbunden")
+            self.lbl_footer_conn.setText("GitHub not connected")
             self.lbl_footer_conn.setStyleSheet("color: #ffb3c1; font-weight: 600;")
 
     def _set_app_status(self, kind: str):
         mapping = {
-            "ready": ("● Bereit", "#39e39a"),
-            "busy": ("● Läuft…", "#6aa3ff"),
-            "error": ("● Fehler", "#ff7594"),
-            "done": ("● Fertig", "#39e39a"),
+            "ready": ("● Ready", "#39e39a"),
+            "busy": ("● Running…", "#6aa3ff"),
+            "error": ("● Error", "#ff7594"),
+            "done": ("● Done", "#39e39a"),
         }
         text, color = mapping[kind]
         self.lbl_footer_status.setText(text)
@@ -1448,10 +1448,10 @@ class MainWindow(QWidget):
     def _startup_login(self):
         secret = load_secret()
         if not secret:
-            self.login_panel.set_status("\nKeine gespeicherte Anmeldung gefunden – bitte anmelden.")
+            self.login_panel.set_status("\nNo saved login found - please sign in.")
             return
         self.login_panel.set_busy(True)
-        self.login_panel.set_status("Gespeicherter Login wird geprüft…")
+        self.login_panel.set_status("Verifying the saved login…")
         self._auth_worker = TokenCheckWorker(secret["token"])
         self._track_thread(self._auth_worker)
         self._auth_worker.done.connect(self._on_auth_check)
@@ -1463,9 +1463,9 @@ class MainWindow(QWidget):
             self.login_panel.set_busy(False)
             if "HTTP 401" in info:
                 delete_secret()
-                self.login_panel.set_status("Gespeicherter Token ungültig – bitte erneut anmelden.", error=True)
+                self.login_panel.set_status("The saved token is invalid - please sign in again.", error=True)
             else:
-                self.login_panel.set_status("GitHub nicht erreichbar – gespeicherter Login bleibt erhalten.", error=True)
+                self.login_panel.set_status("GitHub unreachable - the saved login is kept.", error=True)
             return
         secret = load_secret() or {}
         self.on_authenticated(info, secret.get("token", ""))
@@ -1476,12 +1476,12 @@ class MainWindow(QWidget):
         self._repo_push_allowed = False
         self._repo_permission_error = ""
         self.main_panel.set_user(login)
-        self.lbl_session.setText(f"Angemeldet als: {login}")
+        self.lbl_session.setText(f"Signed in as: {login}")
         self.btn_logout.setEnabled(True)
-        self.main_panel.append_log("Verbindung zu GitHub hergestellt.")
+        self.main_panel.append_log("Connection to GitHub established.")
         if token.startswith("github_pat_"):
             self.main_panel.append_log(
-                "Hinweis: Feingranulierter Token – für den Push braucht das Ziel-Repo mindestens Contents: Read and write."
+                "Note: fine-grained token - the target repo needs at least Contents: Read and write for the push."
             )
         self.stack.setCurrentWidget(self.app_shell)
         self.switch_section("rollback")
@@ -1496,19 +1496,19 @@ class MainWindow(QWidget):
         self._repo_permission_error = ""
         self.login_panel.ed_token.clear()
         self.login_panel.set_busy(False)
-        self.login_panel.set_status("Abgemeldet – bitte erneut anmelden.")
+        self.login_panel.set_status("Signed out - please sign in again.")
         self.stack.setCurrentWidget(self.login_panel)
-        self.lbl_session.setText("Nicht angemeldet")
+        self.lbl_session.setText("Not signed in")
         self.btn_logout.setEnabled(False)
         self._set_connected(False)
 
-    # -- GitHub-API: Repos + Commits --------------------------------------
+    # -- GitHub API: repos + commits --------------------------------------
 
     def load_repos(self):
         if self._api_worker is not None and self._api_worker.isRunning():
             return
         self.main_panel.set_status("busy")
-        self.main_panel.append_log("Lade Repository-Liste…")
+        self.main_panel.append_log("Loading the repository list…")
         self._api_worker = ApiWorker(list_repos, self._token)
         self._track_thread(self._api_worker)
         self._api_worker.done.connect(self._on_repos)
@@ -1518,20 +1518,20 @@ class MainWindow(QWidget):
         self._api_worker = None
         if err or not repos:
             self.main_panel.set_status("error")
-            self.main_panel.append_log(f"Repository-Liste konnte nicht geladen werden: {err or 'leere Antwort'}")
+            self.main_panel.append_log(f"Could not load the repository list: {err or 'empty response'}")
             return
         self.main_panel.set_repos(repos)
         self.main_panel.set_status("ready")
-        self.main_panel.append_log(f"Repository-Liste geladen ({len(repos)} Repos).")
+        self.main_panel.append_log(f"Repository list loaded ({len(repos)} repos).")
 
     def on_repo_changed(self, name: str):
-        self.main_panel.append_log(f"Repository „{name}“ gewählt.")
+        self.main_panel.append_log(f"Repository '{name}' selected.")
         self._repo_push_allowed = False
         self._repo_permission_error = ""
         if self._api_worker is not None and self._api_worker.isRunning():
             return
         self.main_panel.set_status("busy")
-        self.main_panel.append_log("Prüfe Push-Berechtigung…")
+        self.main_panel.append_log("Checking the push permission…")
         self._api_worker = ApiWorker(check_repo_push_permission, self._token, self._login_name, name)
         self._track_thread(self._api_worker)
         self._api_worker.done.connect(lambda result, err, repo=name: self._on_repo_permission_checked(repo, result, err))
@@ -1541,18 +1541,18 @@ class MainWindow(QWidget):
         self._api_worker = None
         if err or result is None:
             self._repo_push_allowed = False
-            self._repo_permission_error = err or "Push-Berechtigung konnte nicht geprüft werden."
-            self.main_panel.append_log(f"Push-Berechtigung konnte nicht geprüft werden: {self._repo_permission_error}")
+            self._repo_permission_error = err or "Could not check the push permission."
+            self.main_panel.append_log(f"Could not check the push permission: {self._repo_permission_error}")
         else:
             allowed, message = result
             self._repo_push_allowed = bool(allowed)
             self._repo_permission_error = message or ""
-            self.main_panel.append_log("Push-Berechtigung: OK" if allowed else "Push-Berechtigung: FEHLT")
+            self.main_panel.append_log("Push permission: OK" if allowed else "Push permission: MISSING")
             if not allowed and self._token.startswith("github_pat_"):
-                self.main_panel.append_log("Fine-Grained Token: Repository freigeben und Contents auf Read and write setzen.")
+                self.main_panel.append_log("Fine-grained token: grant access to the repository and set Contents to Read and write.")
 
         self.main_panel.set_status("busy")
-        self.main_panel.append_log("Lade Commit-Historie…")
+        self.main_panel.append_log("Loading the commit history…")
         self._api_worker = ApiWorker(fetch_all_commits, self._token, self._login_name, name)
         self._track_thread(self._api_worker)
         self._api_worker.done.connect(self._on_commits)
@@ -1562,35 +1562,35 @@ class MainWindow(QWidget):
         self._api_worker = None
         if err or items is None:
             self.main_panel.set_status("error")
-            self.main_panel.append_log(f"Commit-Historie konnte nicht geladen werden: {err}")
+            self.main_panel.append_log(f"Could not load the commit history: {err}")
             return
         entries = [(sha, f"{sha[:7]} [{author}] {date}: {subject}") for sha, author, date, subject in parse_commits(items)]
         self.main_panel.set_commits(entries)
         self.main_panel.set_status("ready")
-        self.main_panel.append_log(f"Commit-Historie geladen ({len(entries)} Commits).")
+        self.main_panel.append_log(f"Commit history loaded ({len(entries)} commits).")
 
-    # -- Prüfen + Starten ---------------------------------------------------
+    # -- Validate + start ---------------------------------------------------
 
     def on_validate(self):
         cfg, errs = self.main_panel.validate()
         if not self._repo_push_allowed:
-            errs.append(self._repo_permission_error or "Für das ausgewählte Repository fehlen Push-Rechte.")
+            errs.append(self._repo_permission_error or "The selected repository is missing push permission.")
         if errs:
-            QMessageBox.warning(self, "Parameter prüfen", "\n".join(errs))
-            self.main_panel.append_log("Parameter prüfen: Fehler gefunden.")
+            QMessageBox.warning(self, "Validate parameters", "\n".join(errs))
+            self.main_panel.append_log("Validate parameters: errors found.")
         else:
-            QMessageBox.information(self, "Parameter prüfen", "Alle Parameter gültig – Push-Berechtigung: OK.")
-            self.main_panel.append_log("Parameter prüfen: alle gültig – Push-Berechtigung OK.")
+            QMessageBox.information(self, "Validate parameters", "All parameters valid - push permission: OK.")
+            self.main_panel.append_log("Validate parameters: all valid - push permission OK.")
 
     def on_start(self):
         cfg, errs = self.main_panel.validate()
         if not self._repo_push_allowed:
-            errs.append(self._repo_permission_error or "Für das ausgewählte Repository fehlen Push-Rechte.")
+            errs.append(self._repo_permission_error or "The selected repository is missing push permission.")
         if errs:
-            QMessageBox.warning(self, "Rollback nicht möglich", "\n".join(errs))
+            QMessageBox.warning(self, "Rollback not possible", "\n".join(errs))
             return
         self._cfg = {**cfg, "token": self._token}
-        self.main_panel.append_log("Rollback gestartet…")
+        self.main_panel.append_log("Rollback started…")
         self.main_panel.set_status("busy")
         self.main_panel.set_busy(True)
         self._start_worker(GitWorker(self._cfg, push=False))
@@ -1608,16 +1608,16 @@ class MainWindow(QWidget):
             self.main_panel.set_status("error")
             self.main_panel.append_log(info)
             self.main_panel.set_busy(False)
-            QMessageBox.critical(self, "Fehler", info)
+            QMessageBox.critical(self, "Error", info)
             return
         if info == "local":
-            self.main_panel.append_log("Lokaler Rollback abgeschlossen – Fork wird aktualisiert (Push)…")
+            self.main_panel.append_log("Local rollback finished - updating the fork (push)…")
             self._start_worker(GitWorker(self._cfg, push=True))
         else:
             self.main_panel.set_status("done")
             self.main_panel.set_busy(False)
 
-    # -- Fenster schließen ----------------------------------------------------
+    # -- Close window ----------------------------------------------------
 
     def closeEvent(self, event):
         if self._force_close:
@@ -1634,8 +1634,8 @@ class MainWindow(QWidget):
             if (
                 QMessageBox.question(
                     self,
-                    "Läuft noch…",
-                    "Eine Operation läuft noch. Jetzt beenden?\nDer laufende Git-Schritt läuft im Hintergrund zu Ende.",
+                    "Still running…",
+                    "An operation is still running. Quit now?\nThe running git step will finish in the background.",
                 )
                 == QMessageBox.StandardButton.Yes
             ):
