@@ -68,6 +68,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v7
         with:
           name: GitRewind-Windows-x64
@@ -80,90 +81,37 @@ jobs:
         with:
           name: GitRewind-macOS-arm64
           path: out
-      - name: Upload to GitHub Release v1.1
+      - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          RELEASE_TAG="$(python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          tree = ast.parse(Path("git_rewind_gui.py").read_text(encoding="utf-8"))
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == "APP_VERSION":
+                          print(ast.literal_eval(node.value))
+                          raise SystemExit
+          raise SystemExit("APP_VERSION not found")
+          PY
+          )"
+          RELEASE_TITLE="GitRewind ${RELEASE_TAG}"
+          RELEASE_NOTES="${RELEASE_TITLE} - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64."
+
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
-          gh release delete v1.1 --yes || true
+          gh release delete "$RELEASE_TAG" --yes || true
           sleep 5
-          gh release create v1.1 \
+          gh release create "$RELEASE_TAG" \
             assets/GitRewind-Windows-x64.zip \
             assets/GitRewind-Linux-x64.zip \
             assets/GitRewind-macOS-arm64.zip \
-            --title "GitRewind v1.1" \
-            --notes "GitRewind v1.1 - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64." \
+            --title "$RELEASE_TITLE" \
+            --notes "$RELEASE_NOTES" \
             --latest
           exit 0
-          python3 <<'PY'
-          import json, os, pathlib, time, urllib.parse, urllib.request, urllib.error
-          tok = os.environ['GITHUB_TOKEN']
-          repo = os.environ['GITHUB_REPOSITORY']
-          h = {'Authorization': 'Bearer ' + tok, 'Accept': 'application/vnd.github+json'}
-          def req(method, url, data=None, extra=None):
-              hh = dict(h)
-              if extra:
-                  hh.update(extra)
-              r = urllib.request.Request(url, data=data, headers=hh, method=method)
-              try:
-                  return urllib.request.urlopen(r)
-              except urllib.error.HTTPError as e:
-                  raise SystemExit(f'{method} {url} -> {e.code}: {e.read().decode()[:500]}')
-          def delete_asset(url):
-              r = urllib.request.Request(url, headers=h, method='DELETE')
-              try:
-                  urllib.request.urlopen(r)
-              except urllib.error.HTTPError as e:
-                  if e.code == 404:
-                      print(f'asset already deleted: {url}')
-                      return
-                  raise SystemExit(f'DELETE {url} -> {e.code}: {e.read().decode()[:500]}')
-          def list_assets(release_id):
-              return json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{release_id}/assets?per_page=100'))
-          def upload_asset(upload_template, release_id, name, data):
-              up_base = upload_template.split('{', 1)[0]
-              up_url = up_base + '?' + urllib.parse.urlencode({'name': name})
-              for attempt in range(3):
-                  r = urllib.request.Request(up_url, data=data, headers={**h, 'Content-Type': 'application/zip'}, method='POST')
-                  try:
-                      urllib.request.urlopen(r)
-                      print('uploaded', name, len(data))
-                      return
-                  except urllib.error.HTTPError as e:
-                      body = e.read().decode()
-                      if e.code == 422 and 'already_exists' in body and attempt < 2:
-                          for a in list_assets(release_id):
-                              if a['name'] == name:
-                                  delete_asset(f"https://api.github.com/repos/{repo}/releases/{release_id}/assets/{a['id']}")
-                          time.sleep(2)
-                          continue
-                      raise SystemExit(f'POST {up_url} -> {e.code}: {body[:500]}')
-          releases = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases?per_page=100'))
-          rel = next((r for r in releases if r['tag_name'] == 'v1.1'), None)
-          if rel:
-              rid = rel['id']
-              assets = list_assets(rid)
-              for a in assets:
-                  delete_asset(f"https://api.github.com/repos/{repo}/releases/{rid}/assets/{a['id']}")
-              print(f'release {rid} exists, old assets removed')
-          else:
-              payload = json.dumps({'tag_name': 'v1.1', 'name': 'GitRewind v1.1',
-                                     'body': 'GitRewind v1.1 — Multi-OS-Builds: Windows x64, Linux x64, macOS arm64.',
-                                     'draft': False, 'prerelease': False}).encode()
-              rel = json.load(req('POST', f'https://api.github.com/repos/{repo}/releases', payload,
-                                   {'Content-Type': 'application/json'}))
-              print('release created:', rel['id'])
-          up_tpl = rel['upload_url']  # https://uploads.github.com/.../assets{?name,label}
-          names = ['GitRewind-Windows-x64.zip', 'GitRewind-Linux-x64.zip', 'GitRewind-macOS-arm64.zip']
-          for name in names:
-              data = pathlib.Path('assets/' + name).read_bytes()
-              upload_asset(up_tpl, rel['id'], name, data)
-          time.sleep(3)
-          ok = json.load(req('GET', f'https://api.github.com/repos/{repo}/releases/{rel["id"]}/assets'))
-          for a in ok:
-              print(a['name'], a['state'], a['size'])
-          assert all(a['state'] == 'uploaded' for a in ok), 'asset still not uploaded'
-          print('DONE')
-          PY
