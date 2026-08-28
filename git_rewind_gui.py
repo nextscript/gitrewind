@@ -1,4 +1,4 @@
-"""GitRewind v1.1 – Reset a GitHub repository to a good commit.
+"""GitRewind v1.2 – Reset a GitHub repository to a good commit.
 
 Flow (identical to the old rollback.bat flow):
   1.  GitHub login       -> token in the browser, stored encrypted next to the app
@@ -7,9 +7,9 @@ Flow (identical to the old rollback.bat flow):
   4.  Git check          -> git --version
   5.  Clone (if new)     -> git clone <REPO_URL> <REPO_DIR>
   6.  Fetch              -> git fetch --all --prune
-  7.  Backup branch      -> git branch backup-before-rollback-<PROBLEM> <PROBLEM>
-  8.  Reset locally      -> git checkout -B main <TARGET>
-  9.  Update fork        -> git push --force-with-lease origin main
+  7.  Backup branch      -> git branch backup-before-rollback-<BRANCH>-<PROBLEM> origin/<BRANCH>
+  8.  Reset locally      -> git checkout -B <BRANCH> <TARGET>
+  9.  Update fork        -> git push --force-with-lease origin <BRANCH>
 
 The GitHub token is stored encrypted next to the app
 (git_rewind_secret.enc – Windows: DPAPI, otherwise Fernet), so that
@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 
@@ -52,7 +53,7 @@ from PyQt6.QtWidgets import (
 )
 
 APP_NAME = "GitRewind"
-APP_VERSION = "v1.1"
+APP_VERSION = "v1.2"
 if getattr(sys, "frozen", False):  # PyInstaller onefile: __file__ points to a temp extraction dir, the app sits next to the Exe
     APP_DIR = Path(sys.executable).resolve().parent
     ICON_PATH = Path(getattr(sys, "_MEIPASS", APP_DIR)) / "icon.png"
@@ -416,12 +417,12 @@ def parse_commits(items: list) -> list[tuple[str, str, str, str]]:
     return out
 
 
-def fetch_all_commits(token: str, user: str, repo: str) -> list[dict]:
-    """Fetch up to MAX_COMMITS commits from the GitHub API (paginated)."""
+def fetch_all_branches(token: str, user: str, repo: str) -> list[dict]:
+    """Fetch all branches of the selected repository."""
     got: list[dict] = []
     page = 1
-    while len(got) < MAX_COMMITS:
-        items = gh_get(f"/repos/{user}/{repo}/commits?per_page=100&page={page}", token)
+    while True:
+        items = gh_get(f"/repos/{user}/{repo}/branches?per_page=100&page={page}", token)
         if not isinstance(items, list) or not items:
             break
         got.extend(items)
@@ -429,6 +430,26 @@ def fetch_all_commits(token: str, user: str, repo: str) -> list[dict]:
             break
         page += 1
     return got
+
+
+def fetch_all_commits(token: str, user: str, repo: str, branch: str) -> list[dict]:
+    """Fetch up to MAX_COMMITS commits from one branch."""
+    got: list[dict] = []
+    page = 1
+    encoded_branch = urllib.parse.quote(branch, safe="")
+    while len(got) < MAX_COMMITS:
+        items = gh_get(
+            f"/repos/{user}/{repo}/commits"
+            f"?sha={encoded_branch}&per_page=100&page={page}",
+            token,
+        )
+        if not isinstance(items, list) or not items:
+            break
+        got.extend(items)
+        if len(items) < 100:
+            break
+        page += 1
+    return got[:MAX_COMMITS]
 
 
 def verify_token(token: str) -> tuple[bool, str]:
@@ -569,10 +590,12 @@ class GitWorker(QThread):
         cfg = self.cfg
         path = cfg["repo_path"]
         good = cfg["good"]
+        branch = cfg["branch"]
 
         self._emit("=" * 62)
         self._emit(f"{APP_NAME} {APP_VERSION} - Rollback")
         self._emit(f"Repo:      {cfg['repo']}")
+        self._emit(f"Branch:    {branch}")
         self._emit(f"Target:    {good}")
         self._emit(f"Problem:   {cfg['broken']}")
         self._emit(f"Folder:    {path}")
@@ -607,9 +630,29 @@ class GitWorker(QThread):
             self.done.emit(False, self._fail("Fetch (GitHub connection)", out))
             return
 
+        remote_ref = f"refs/remotes/origin/{branch}"
+        rc_ref, _ = run_git(["show-ref", "--verify", "--quiet", remote_ref], cwd=path)
+        if rc_ref != 0:
+            self.done.emit(False, f"ERROR: remote branch '{branch}' no longer exists.")
+            return
+
+        rc, _ = run_git(["merge-base", "--is-ancestor", good, remote_ref], cwd=path)
+        if rc != 0:
+            self.done.emit(False, f"ERROR: target commit {good[:12]} is not reachable from branch '{branch}'.")
+            return
+
+        rc, _ = run_git(["merge-base", "--is-ancestor", cfg["broken"], remote_ref], cwd=path)
+        if rc != 0:
+            self.done.emit(
+                False,
+                f"ERROR: problem commit {cfg['broken'][:12]} is not reachable from branch '{branch}'.",
+            )
+            return
+
         self._emit("")
         self._emit("Saving the current state as a backup branch…")
-        backup_branch = f"backup-before-rollback-{cfg['broken']}"
+        safe_branch = re.sub(r"[^A-Za-z0-9._-]+", "-", branch)
+        backup_branch = f"backup-before-rollback-{safe_branch}-{cfg['broken'][:12]}"
         rc_check, _ = run_git(
             ["show-ref", "--verify", "--quiet", f"refs/heads/{backup_branch}"],
             cwd=path,
@@ -617,20 +660,20 @@ class GitWorker(QThread):
         if rc_check == 0:
             self._emit("Backup branch already exists - keeping the existing backup.")
         else:
-            rc, out = self._git(["branch", backup_branch, cfg["broken"]], cwd=path)
+            rc, out = self._git(["branch", backup_branch, remote_ref], cwd=path)
             if rc != 0:
                 self.done.emit(False, self._fail("Create backup branch", out))
                 return
         self._emit("")
 
-        rc, out = self._git(["checkout", "-B", "main", good], cwd=path)
+        rc, out = self._git(["checkout", "-B", branch, good], cwd=path)
         if rc != 0:
             self.done.emit(False, self._fail(f"Checkout of {good[:7]}", out))
             return
 
         self._emit("")
         self._emit("=" * 62)
-        self._emit(f"The local state was successfully reset to {good}.")
+        self._emit(f"Local branch '{branch}' was successfully reset to {good}.")
         self._emit("=" * 62)
         self.done.emit(True, "local")
 
@@ -646,31 +689,33 @@ class GitWorker(QThread):
     def _phase_push(self):
         cfg = self.cfg
         path = cfg["repo_path"]
+        branch = cfg["branch"]
+        remote_ref = f"refs/remotes/origin/{branch}"
         auth_url = inject_token(cfg["url"], self._tok)
 
         self._emit("")
         self._emit("Updating the remote state before the push…")
         rc, out = self._git(
-            ["fetch", auth_url, "main:refs/remotes/origin/main"],
+            ["fetch", auth_url, f"{branch}:{remote_ref}"],
             cwd=path,
-            header="Updating remote main…",
+            header=f"Updating remote {branch}…",
         )
         if rc != 0:
             self.done.emit(False, self._fail("Update remote state", out))
             return
 
-        rc_sha, lease_sha = run_git(["rev-parse", "refs/remotes/origin/main"], cwd=path)
+        rc_sha, lease_sha = run_git(["rev-parse", remote_ref], cwd=path)
         lease_sha = lease_sha.strip() if rc_sha == 0 else ""
         if not lease_sha:
-            self.done.emit(False, "ERROR: the remote state of origin/main could not be determined.")
+            self.done.emit(False, f"ERROR: the remote state of origin/{branch} could not be determined.")
             return
 
         self._emit("")
         self._emit("Pushing with --force-with-lease (updating the fork)…")
         rc, out = self._git(
-            ["push", f"--force-with-lease=main:{lease_sha}", auth_url, "main:main"],
+            ["push", f"--force-with-lease={branch}:{lease_sha}", auth_url, f"{branch}:{branch}"],
             cwd=path,
-            header="git push --force-with-lease <GitHub> main:main",
+            header=f"git push --force-with-lease <GitHub> {branch}:{branch}",
         )
         if rc != 0:
             error_type, explanation = self._classify_push_error(out)
@@ -691,7 +736,7 @@ class GitWorker(QThread):
                     hint = common + "\n\n" + explanation
             elif error_type == "branch_protection":
                 hint = common + (
-                    "\n\nGitHub is blocking the force push via branch protection or a ruleset."
+                    f"\n\nGitHub is blocking the force push to branch '{branch}' via branch protection or a ruleset."
                     "\nCheck Repository -> Settings -> Rules / Branches."
                 )
             elif error_type == "authentication":
@@ -705,7 +750,7 @@ class GitWorker(QThread):
             return
 
         self._emit("")
-        self._emit(f"The fork was successfully reset to {cfg['good']}.")
+        self._emit(f"Branch '{branch}' was successfully reset to {cfg['good']}.")
         self.done.emit(True, "push")
 
 
@@ -760,6 +805,15 @@ class CommitField(QWidget):
     def set_items(self, entries: list[tuple[str, str]]):
         self._entries = list(entries)
         self.filter(self._search_popup.text() if self._search_popup else "")
+
+    def clear_selection(self):
+        self._sha = ""
+        self._entries = []
+        self._matches = []
+        if self._search_popup is not None:
+            self._search_popup.clear()
+        self._update_trigger()
+        self._rebuild_list()
 
     def filter(self, text: str):
         t = text.strip().lower()
@@ -988,6 +1042,7 @@ class MainPanel(QWidget):
     start_clicked = pyqtSignal()
     validate_clicked = pyqtSignal()
     repo_changed = pyqtSignal(str)
+    branch_changed = pyqtSignal(str)
     status_changed = pyqtSignal(str)
 
     def __init__(self):
@@ -1086,10 +1141,21 @@ class MainPanel(QWidget):
         self.combo_repo = QComboBox()
         self.combo_repo.currentIndexChanged.connect(self._on_repo_selected)
         self.combo_repo.setMinimumWidth(360)
+        self.combo_branch = QComboBox()
+        self.combo_branch.setMinimumWidth(360)
+        self.combo_branch.setEnabled(False)
+        self.combo_branch.currentIndexChanged.connect(self._on_branch_selected)
         self.ed_path = QLineEdit()
         self.ed_path.setReadOnly(True)
         self.ed_path.setPlaceholderText("Repo path (auto)")
+        repo_label = QLabel("Repository")
+        repo_label.setObjectName("SectionSubTitle")
+        branch_label = QLabel("Branch")
+        branch_label.setObjectName("SectionSubTitle")
+        right.addWidget(repo_label)
         right.addWidget(self.combo_repo)
+        right.addWidget(branch_label)
+        right.addWidget(self.combo_branch)
         right.addWidget(self.ed_path)
         lay.addLayout(right, 1)
         return card
@@ -1205,16 +1271,66 @@ class MainPanel(QWidget):
         self.ed_user.setText(login)
 
     def set_repos(self, repos: list[dict]):
+        self.combo_repo.blockSignals(True)
         self.combo_repo.clear()
         for r in repos:
             name = r.get("name", "")
             if not name:
                 continue
             label = f"{name} (Fork)" if r.get("fork") else name
-            self.combo_repo.addItem(label, name)
+            self.combo_repo.addItem(
+                label,
+                {
+                    "name": name,
+                    "default_branch": r.get("default_branch", ""),
+                },
+            )
+        self.combo_repo.blockSignals(False)
 
     def repo_selected(self) -> str:
-        return self.combo_repo.currentData() or ""
+        data = self.combo_repo.currentData()
+        if isinstance(data, dict):
+            return data.get("name", "")
+        return ""
+
+    def repo_default_branch(self) -> str:
+        data = self.combo_repo.currentData()
+        if isinstance(data, dict):
+            return data.get("default_branch", "")
+        return ""
+
+    def set_branches(self, branches: list[dict], default_branch: str = ""):
+        self.combo_branch.blockSignals(True)
+        self.combo_branch.clear()
+        main_index = -1
+        repo_default_index = -1
+
+        for branch in branches:
+            name = str(branch.get("name", "")).strip()
+            if not name:
+                continue
+            self.combo_branch.addItem(name, name)
+            current_index = self.combo_branch.count() - 1
+            if name == "main":
+                main_index = current_index
+            if name == default_branch:
+                repo_default_index = current_index
+
+        if self.combo_branch.count():
+            if main_index >= 0:
+                self.combo_branch.setCurrentIndex(main_index)
+            elif repo_default_index >= 0:
+                self.combo_branch.setCurrentIndex(repo_default_index)
+            else:
+                self.combo_branch.setCurrentIndex(0)
+            self.combo_branch.setEnabled(True)
+        else:
+            self.combo_branch.setEnabled(False)
+
+        self.combo_branch.blockSignals(False)
+
+    def branch_selected(self) -> str:
+        return self.combo_branch.currentData() or ""
 
     def set_commits(self, entries: list[tuple[str, str]]):
         self.commit_ziel.set_items(entries)
@@ -1222,10 +1338,15 @@ class MainPanel(QWidget):
         self.commit_ziel.select_index(1 if len(entries) > 1 else 0)
         self.commit_prob.select_index(0)
 
+    def clear_commits(self):
+        self.commit_ziel.clear_selection()
+        self.commit_prob.clear_selection()
+
     def set_busy(self, busy: bool):
         self.btn_start.setEnabled(not busy)
         self.btn_validate.setEnabled(not busy)
         self.combo_repo.setEnabled(not busy)
+        self.combo_branch.setEnabled(not busy and self.combo_branch.count() > 0)
         self.commit_ziel.setEnabled(not busy)
         self.commit_prob.setEnabled(not busy)
 
@@ -1253,6 +1374,12 @@ class MainPanel(QWidget):
         self._update_path()
         self.repo_changed.emit(name)
 
+    def _on_branch_selected(self, _index: int):
+        branch = self.branch_selected()
+        if not branch:
+            return
+        self.branch_changed.emit(branch)
+
     def _update_path(self):
         if self._auto_dir:
             self.ed_path.setText(str(repo_path_for(self._auto_dir)))
@@ -1261,6 +1388,7 @@ class MainPanel(QWidget):
         errs: list[str] = []
         user = self.ed_user.text().strip()
         repo = self.repo_selected()
+        branch = self.branch_selected()
         d = self._auto_dir
         good = self.commit_ziel.current_sha()
         broken = self.commit_prob.current_sha()
@@ -1268,6 +1396,8 @@ class MainPanel(QWidget):
             errs.append("GitHub user is missing (no login).")
         if not repo:
             errs.append("No repository selected.")
+        if not branch:
+            errs.append("No branch selected.")
         if not good:
             errs.append("Target commit (good) not selected.")
         elif not COMMIT_RE.fullmatch(good):
@@ -1281,6 +1411,7 @@ class MainPanel(QWidget):
         cfg = {
             "user": user,
             "repo": repo,
+            "branch": branch,
             "repo_dir": d,
             "repo_path": repo_path_for(d) if d else None,
             "url": build_repo_url(user, repo),
@@ -1357,6 +1488,7 @@ class MainWindow(QWidget):
         self.main_panel.start_clicked.connect(self.on_start)
         self.main_panel.validate_clicked.connect(self.on_validate)
         self.main_panel.repo_changed.connect(self.on_repo_changed)
+        self.main_panel.branch_changed.connect(self.on_branch_changed)
 
         self.app_shell = QWidget()
         shell_row = QHBoxLayout(self.app_shell)
@@ -1523,14 +1655,25 @@ class MainWindow(QWidget):
         self.main_panel.set_repos(repos)
         self.main_panel.set_status("ready")
         self.main_panel.append_log(f"Repository list loaded ({len(repos)} repos).")
+        name = self.main_panel.repo_selected()
+        if name:
+            self.main_panel._auto_dir = name
+            self.main_panel._update_path()
+            self.on_repo_changed(name)
 
     def on_repo_changed(self, name: str):
+        self.main_panel.clear_commits()
+        self.main_panel.combo_branch.blockSignals(True)
+        self.main_panel.combo_branch.clear()
+        self.main_panel.combo_branch.setEnabled(False)
+        self.main_panel.combo_branch.blockSignals(False)
         self.main_panel.append_log(f"Repository '{name}' selected.")
         self._repo_push_allowed = False
         self._repo_permission_error = ""
         if self._api_worker is not None and self._api_worker.isRunning():
             return
         self.main_panel.set_status("busy")
+        self.main_panel.set_busy(True)
         self.main_panel.append_log("Checking the push permission…")
         self._api_worker = ApiWorker(check_repo_push_permission, self._token, self._login_name, name)
         self._track_thread(self._api_worker)
@@ -1539,6 +1682,9 @@ class MainWindow(QWidget):
 
     def _on_repo_permission_checked(self, name: str, result, err: str):
         self._api_worker = None
+        if name != self.main_panel.repo_selected():
+            self.main_panel.set_busy(False)
+            return
         if err or result is None:
             self._repo_push_allowed = False
             self._repo_permission_error = err or "Could not check the push permission."
@@ -1552,22 +1698,75 @@ class MainWindow(QWidget):
                 self.main_panel.append_log("Fine-grained token: grant access to the repository and set Contents to Read and write.")
 
         self.main_panel.set_status("busy")
-        self.main_panel.append_log("Loading the commit history…")
-        self._api_worker = ApiWorker(fetch_all_commits, self._token, self._login_name, name)
+        self.main_panel.append_log("Loading branches…")
+        self._api_worker = ApiWorker(fetch_all_branches, self._token, self._login_name, name)
         self._track_thread(self._api_worker)
-        self._api_worker.done.connect(self._on_commits)
+        self._api_worker.done.connect(lambda result, err, repo=name: self._on_branches(repo, result, err))
         self._api_worker.start()
 
-    def _on_commits(self, items, err: str):
+    def _on_branches(self, repo: str, branches, err: str):
         self._api_worker = None
+        if err or branches is None:
+            self.main_panel.set_status("error")
+            self.main_panel.set_busy(False)
+            self.main_panel.append_log(f"Could not load branches: {err}")
+            return
+        if repo != self.main_panel.repo_selected():
+            self.main_panel.set_busy(False)
+            return
+        default_branch = self.main_panel.repo_default_branch()
+        self.main_panel.set_branches(branches, default_branch=default_branch)
+        self.main_panel.append_log(f"Branch list loaded ({len(branches)} branches).")
+        branch = self.main_panel.branch_selected()
+        if branch:
+            self.main_panel.set_busy(False)
+            self.on_branch_changed(branch)
+        else:
+            self.main_panel.set_status("error")
+            self.main_panel.set_busy(False)
+            self.main_panel.append_log("The repository contains no selectable branch.")
+
+    def on_branch_changed(self, branch: str):
+        repo = self.main_panel.repo_selected()
+        if not repo or not branch:
+            return
+        self.main_panel.clear_commits()
+        if self._api_worker is not None and self._api_worker.isRunning():
+            return
+        self.main_panel.set_status("busy")
+        self.main_panel.set_busy(True)
+        self.main_panel.append_log(f"Branch '{branch}' selected.")
+        self.main_panel.append_log(f"Loading commit history for branch '{branch}'…")
+        self._api_worker = ApiWorker(fetch_all_commits, self._token, self._login_name, repo, branch)
+        self._track_thread(self._api_worker)
+        self._api_worker.done.connect(
+            lambda items, err, expected_repo=repo, expected_branch=branch: self._on_commits_for_branch(
+                expected_repo,
+                expected_branch,
+                items,
+                err,
+            )
+        )
+        self._api_worker.start()
+
+    def _on_commits_for_branch(self, repo: str, branch: str, items, err: str):
+        self._api_worker = None
+        if repo != self.main_panel.repo_selected():
+            self.main_panel.set_busy(False)
+            return
+        if branch != self.main_panel.branch_selected():
+            self.main_panel.set_busy(False)
+            return
         if err or items is None:
             self.main_panel.set_status("error")
-            self.main_panel.append_log(f"Could not load the commit history: {err}")
+            self.main_panel.set_busy(False)
+            self.main_panel.append_log(f"Could not load commit history for branch '{branch}': {err}")
             return
         entries = [(sha, f"{sha[:7]} [{author}] {date}: {subject}") for sha, author, date, subject in parse_commits(items)]
         self.main_panel.set_commits(entries)
         self.main_panel.set_status("ready")
-        self.main_panel.append_log(f"Commit history loaded ({len(entries)} commits).")
+        self.main_panel.set_busy(False)
+        self.main_panel.append_log(f"Commit history for branch '{branch}' loaded ({len(entries)} commits).")
 
     # -- Validate + start ---------------------------------------------------
 
@@ -1588,6 +1787,23 @@ class MainWindow(QWidget):
             errs.append(self._repo_permission_error or "The selected repository is missing push permission.")
         if errs:
             QMessageBox.warning(self, "Rollback not possible", "\n".join(errs))
+            return
+        answer = QMessageBox.warning(
+            self,
+            "Confirm rollback",
+            (
+                f"Repository: {cfg['user']}/{cfg['repo']}\n"
+                f"Branch: {cfg['branch']}\n"
+                f"Target: {cfg['good'][:12]}\n"
+                f"Problem: {cfg['broken'][:12]}\n\n"
+                "The selected branch will be rewritten on GitHub "
+                "using --force-with-lease.\n\n"
+                "Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
             return
         self._cfg = {**cfg, "token": self._token}
         self.main_panel.append_log("Rollback started…")
