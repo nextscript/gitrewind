@@ -7,6 +7,18 @@ GitRewind is a graphical rollback tool for GitHub repositories. It helps you und
 > **Important:** GitRewind rewrites the commit history of the selected target branch. Only use this tool if you understand that a rollback can remove newer commits from the visible history of that branch.
 
 ────────
+<h2>Screenshots</h2>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="screens/screenshot1.PNG" width="100%">
+    </td>
+    <td width="50%" align="center">
+      <img src="screens/screenshot2.PNG" width="100%">
+    </td>
+  </tr>
+</table>
 
 <details>
 <summary><h3>1. What is GitRewind?</h3></summary>
