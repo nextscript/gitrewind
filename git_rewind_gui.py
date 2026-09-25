@@ -1,4 +1,4 @@
-"""GitRewind v1.2 – Reset a GitHub repository to a good commit.
+"""GitRewind v1.3 – Reset a GitHub repository to a good commit.
 
 Flow (identical to the old rollback.bat flow):
   1.  GitHub login       -> token in the browser, stored encrypted next to the app
@@ -53,7 +53,7 @@ from PyQt6.QtWidgets import (
 )
 
 APP_NAME = "GitRewind"
-APP_VERSION = "v1.2"
+APP_VERSION = "v1.3"
 if getattr(sys, "frozen", False):  # PyInstaller onefile: __file__ points to a temp extraction dir, the app sits next to the Exe
     APP_DIR = Path(sys.executable).resolve().parent
     ICON_PATH = Path(getattr(sys, "_MEIPASS", APP_DIR)) / "icon.png"
@@ -63,7 +63,14 @@ else:
 
 SECRET_FILE = APP_DIR / "git_rewind_secret.enc"
 LOG_FILE = APP_DIR / "logs" / "protocoll.txt"
-TOKEN_PAGE = "https://github.com/settings/tokens"
+TOKEN_PAGE = (
+    "https://github.com/settings/personal-access-tokens/new"
+    "?name=GitRewind"
+    "&description=Personal+Access+Token+for+GitRewind"
+    "&expires_in=none"
+    "&contents=write"
+)
+WORKFLOW_TOKEN_PAGE = TOKEN_PAGE + "&workflows=write"
 
 COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,40}$")
 MAX_COMMITS = 500
@@ -948,10 +955,25 @@ class LoginPanel(QWidget):
         cv.addWidget(title)
         cv.addWidget(subtitle)
 
-        self.btn_browser = QPushButton("Open GitHub in the browser")
+        self.btn_browser = QPushButton("Create recommended GitHub token")
         self.btn_browser.setObjectName("GhostBtn")
-        self.btn_browser.clicked.connect(self._open_browser)
+        self.btn_browser.clicked.connect(lambda: self._open_browser(TOKEN_PAGE))
         cv.addWidget(self.btn_browser)
+
+        token_help = QLabel(
+            "Recommended: Metadata: Read · Contents: Read and write · No expiration. "
+            "Select only the repositories you want GitRewind to access. "
+            "Organizations may require a token expiration date."
+        )
+        token_help.setObjectName("PageSubTitle")
+        token_help.setWordWrap(True)
+        cv.addWidget(token_help)
+
+        self.btn_workflow_token = QPushButton("Create token for workflow changes")
+        self.btn_workflow_token.setObjectName("GhostBtn")
+        self.btn_workflow_token.setToolTip("Adds Workflows: Read and write for changes under .github/workflows/.")
+        self.btn_workflow_token.clicked.connect(lambda: self._open_browser(WORKFLOW_TOKEN_PAGE))
+        cv.addWidget(self.btn_workflow_token)
 
         row = QHBoxLayout()
         row.setSpacing(12)
@@ -996,6 +1018,7 @@ class LoginPanel(QWidget):
 
     def set_busy(self, busy: bool):
         self.btn_browser.setEnabled(not busy)
+        self.btn_workflow_token.setEnabled(not busy)
         self.btn_login.setEnabled(not busy)
         self.ed_token.setEnabled(not busy)
 
@@ -1003,9 +1026,28 @@ class LoginPanel(QWidget):
         self.lbl_status.setText(text)
         self.lbl_status.setStyleSheet("color: #ff8aa3;" if error else "")
 
-    def _open_browser(self):
-        webbrowser.open(TOKEN_PAGE)
-        self.set_status("GitHub opened in the browser - create a token and paste it here.")
+    def _open_browser(self, url: str):
+        try:
+            opened = webbrowser.open(url)
+        except Exception:
+            opened = False
+        if opened:
+            self.set_status("GitHub opened in the browser - select repositories, generate the token and paste it here.")
+            return
+
+        self.set_status("Could not open the GitHub token page automatically.", error=True)
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Could not open GitHub")
+        dialog.setText("Could not open the GitHub token page automatically. Please open this URL manually:")
+        dialog.setInformativeText(url)
+        dialog.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        copy_button = dialog.addButton("Copy URL", QMessageBox.ButtonRole.ActionRole)
+        dialog.addButton("Close", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() is copy_button:
+            QApplication.clipboard().setText(url)
+            self.set_status("Token page URL copied. Open it in your browser.")
 
     def _on_login(self):
         token = self.ed_token.text().strip()

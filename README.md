@@ -204,6 +204,10 @@ GitHub calls these credentials Personal Access Tokens (PAT).
 
 A Fine-Grained Personal Access Token is recommended for GitRewind, because it lets you limit access to specific repositories and permissions.
 
+Click **Create recommended GitHub token** on the sign-in screen to open GitHub's fine-grained token form with the name, description, no expiration, and Contents: Read and write filled in. GitHub grants Metadata: Read automatically. Choose the repository access yourself; **Only select repositories** is recommended, with only the repositories you intend to use in GitRewind. An organization may require an expiration date or impose other token policies.
+
+If GitRewind cannot open the browser, the error dialog shows the URL and offers a **Copy URL** button. For rollbacks involving `.github/workflows/`, use **Create token for workflow changes** to additionally request Workflows: Read and write.
+
 Recommended fine-grained settings
 
 Under:

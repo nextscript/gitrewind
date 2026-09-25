@@ -101,7 +101,7 @@ jobs:
           PY
           )"
           RELEASE_TITLE="GitRewind ${RELEASE_TAG}"
-          RELEASE_NOTES="${RELEASE_TITLE} - Multi-OS-Builds: Windows x64, Linux x64, macOS arm64."
+          RELEASE_NOTES="${RELEASE_TITLE}: Create a fine-grained GitHub token with the recommended settings in one click. Choose repository access yourself, add workflow permission only when needed, and copy the setup URL if the browser cannot open. Builds: Windows x64, Linux x64, macOS arm64."
 
           mkdir -p assets
           cp out/GitRewind-Windows-x64.zip out/GitRewind-Linux-x64.zip out/GitRewind-macOS-arm64.zip assets/
